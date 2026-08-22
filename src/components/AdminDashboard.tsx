@@ -3,6 +3,7 @@ import { Order, RiderProfile, UserProfile, WalletRechargeRequest, SupportChatMes
 import { formatCurrency } from '../utils/geoUtils';
 import { calculateAdminEarningsSummary, DayEarningsSummary, CompletedRideRecord } from '../utils/earningsUtils';
 import { useAuth } from '../hooks/useAuth';
+import { isSupabaseConfigured } from '../lib/supabase';
 import {
   LayoutDashboard,
   Clock,
@@ -35,6 +36,8 @@ import {
   ExternalLink,
   QrCode,
   Send,
+  Cloud,
+  Database,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -95,7 +98,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onSendSupportMessage,
 }) => {
   const { signOut } = useAuth();
-  const [adminTab, setAdminTab] = useState<'orders' | 'kyc' | 'customers' | 'riders' | 'wallet-qr' | 'wallet-process' | 'support-chat' | 'earnings'>('orders');
+  const [adminTab, setAdminTab] = useState<'orders' | 'kyc' | 'customers' | 'riders' | 'wallet-qr' | 'wallet-process' | 'support-chat' | 'earnings' | 'settings'>('orders');
+  const [customSupabaseUrlInput, setCustomSupabaseUrlInput] = useState(() => localStorage.getItem('qd_custom_supabase_url') || '');
+  const [customSupabaseKeyInput, setCustomSupabaseKeyInput] = useState(() => localStorage.getItem('qd_custom_supabase_key') || '');
+  const [supabaseSaveSuccess, setSupabaseSaveSuccess] = useState(false);
+
+  const handleSaveSupabaseSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem('qd_custom_supabase_url', customSupabaseUrlInput.trim());
+    localStorage.setItem('qd_custom_supabase_key', customSupabaseKeyInput.trim());
+    setSupabaseSaveSuccess(true);
+    setTimeout(() => {
+      setSupabaseSaveSuccess(false);
+      window.location.reload();
+    }, 1200);
+  };
   const [selectedSupportRiderId, setSelectedSupportRiderId] = useState<string>(riders[0]?.id || '');
   const [adminChatInput, setAdminChatInput] = useState('');
   const [activeFeedFilter, setActiveFeedFilter] = useState<'all' | 'pending' | 'running' | 'finished'>('all');
@@ -298,6 +315,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <MessageSquare className="w-4 h-4" />
               <span>QuickDrop support</span>
+            </button>
+
+            <button
+              onClick={() => setAdminTab('settings')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
+                adminTab === 'settings'
+                  ? 'bg-purple-600 text-white shadow-md'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+              }`}
+            >
+              <Cloud className="w-4 h-4" />
+              <span>Cloud Sync</span>
             </button>
 
             <button
@@ -1627,6 +1656,89 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               })}
             </div>
           )}
+        </div>
+      </div>
+    ) : adminTab === 'settings' ? (
+      /* ========================================================
+          ADMIN TAB: "Cloud Sync Settings" (Supabase Connection)
+      ======================================================== */
+      <div className="max-w-3xl mx-auto px-4 py-2 space-y-6">
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600 font-bold">
+              <Cloud className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black font-heading text-slate-900">Cross-Device Cloud Sync Settings</h2>
+              <p className="text-xs text-slate-500">Connect Supabase to instantly sync customer orders to rider dashboards across different mobile phones and browsers.</p>
+            </div>
+          </div>
+
+          <div className={`p-4 rounded-2xl border text-xs font-medium flex items-center gap-3 ${isSupabaseConfigured ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <div>
+              {isSupabaseConfigured ? (
+                <span><strong>Supabase Connected:</strong> Real-time cross-device sync is active and operational! Orders created on customer mobile will instantly appear on rider mobile.</span>
+              ) : (
+                <span><strong>Local Mode Active:</strong> Supabase is not configured. Orders are saved only on this device's browser cache. Configure Supabase below to enable live cross-device sync between customer and rider phones.</span>
+              )}
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveSupabaseSettings} className="space-y-4 pt-2">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Supabase Project URL</label>
+              <input
+                type="url"
+                value={customSupabaseUrlInput}
+                onChange={e => setCustomSupabaseUrlInput(e.target.value)}
+                placeholder="https://xyzproject.supabase.co"
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Supabase Anon / Public Key</label>
+              <input
+                type="password"
+                value={customSupabaseKeyInput}
+                onChange={e => setCustomSupabaseKeyInput(e.target.value)}
+                placeholder="eyJhbGciOiJIUzI1NiIsIn..."
+                className="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+              />
+            </div>
+
+            {supabaseSaveSuccess && (
+              <div className="p-3 bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Supabase configuration saved successfully! Reloading...</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="submit"
+                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
+              >
+                <Database className="w-4 h-4" />
+                <span>Save & Connect Real-Time Sync</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('qd_custom_supabase_url');
+                  localStorage.removeItem('qd_custom_supabase_key');
+                  setCustomSupabaseUrlInput('');
+                  setCustomSupabaseKeyInput('');
+                  window.location.reload();
+                }}
+                className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Reset / Clear
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     ) : adminTab === 'support-chat' ? (

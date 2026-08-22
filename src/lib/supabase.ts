@@ -37,17 +37,24 @@ function getValidSupabaseKey(rawKey?: string): string {
   return rawKey.trim();
 }
 
-const rawEnvUrl = import.meta.env.VITE_SUPABASE_URL;
-const rawEnvKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+export function getStoredSupabaseConfig() {
+  const customUrl = typeof window !== 'undefined' ? localStorage.getItem('qd_custom_supabase_url') : null;
+  const customKey = typeof window !== 'undefined' ? localStorage.getItem('qd_custom_supabase_key') : null;
+  const url = customUrl || import.meta.env.VITE_SUPABASE_URL;
+  const key = customKey || import.meta.env.VITE_SUPABASE_ANON_KEY;
+  return { url, key };
+}
 
-export const supabaseUrl = getValidSupabaseUrl(rawEnvUrl);
-export const supabaseAnonKey = getValidSupabaseKey(rawEnvKey);
+const { url: initialUrl, key: initialKey } = getStoredSupabaseConfig();
+
+export const supabaseUrl = getValidSupabaseUrl(initialUrl);
+export const supabaseAnonKey = getValidSupabaseKey(initialKey);
 
 export const isSupabaseConfigured = Boolean(
-  rawEnvUrl &&
-  rawEnvKey &&
-  !rawEnvUrl.includes('your-project') &&
-  !rawEnvUrl.includes('demo-project') &&
+  initialUrl &&
+  initialKey &&
+  !initialUrl.includes('your-project') &&
+  !initialUrl.includes('demo-project') &&
   supabaseUrl !== 'https://demo-project.supabase.co'
 );
 
