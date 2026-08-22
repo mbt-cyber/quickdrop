@@ -68,19 +68,7 @@ export default function App() {
     handleNavigateTo(`/${role}`, role, false);
   };
 
-  // Track if initial URL route was handled
-  const [initialRoleHandled, setInitialRoleHandled] = useState(false);
 
-  // Auto-redirect to the authenticated user's dashboard role upon fresh signup or signin
-  useEffect(() => {
-    if (!initialRoleHandled) {
-      setInitialRoleHandled(true);
-      return;
-    }
-    if (authUser?.role && authUser.role !== currentRole) {
-      handleNavigateTo(`/${authUser.role}`, authUser.role, false);
-    }
-  }, [authUser?.role]);
 
   // Listen for back/forward browser button navigation
   useEffect(() => {
