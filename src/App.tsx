@@ -9,6 +9,7 @@ import { AuthModal } from './components/AuthModal';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { initSyncEngine, broadcastSyncEvent } from './lib/syncEngine';
 
 export default function App() {
   const { user: authUser } = useAuth();
@@ -153,7 +154,90 @@ export default function App() {
     }
   };
 
-  // Supabase orders sync & Realtime listener + cross-browser polling
+  // Global Real-Time Multi-Device Sync Engine (works seamlessly across separate mobile phones and browsers)
+  useEffect(() => {
+    const unsubscribe = initSyncEngine({
+      onOrderCreated: (newOrder) => {
+        setOrders((prev) => {
+          const exists = prev.some((o) => o.id === newOrder.id);
+          if (exists) {
+            return prev.map((o) => (o.id === newOrder.id ? { ...o, ...newOrder } : o));
+          }
+          return [newOrder, ...prev];
+        });
+      },
+      onOrderUpdated: (updatedOrder) => {
+        setOrders((prev) => {
+          const exists = prev.some((o) => o.id === updatedOrder.id);
+          if (exists) {
+            return prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
+          }
+          return [updatedOrder, ...prev];
+        });
+      },
+      onOrderDeleted: (orderId) => {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      },
+      onOrdersBulkSync: (syncedOrders) => {
+        if (!syncedOrders || !Array.isArray(syncedOrders)) return;
+        setOrders((prev) => {
+          const map = new Map<string, Order>();
+          syncedOrders.forEach((o) => {
+            if (o && o.id) map.set(o.id, o);
+          });
+          prev.forEach((o) => {
+            if (o && o.id && !map.has(o.id)) map.set(o.id, o);
+          });
+          return Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          );
+        });
+      },
+      onRiderStatusUpdated: (riderId, isOnline) => {
+        setRiders((prev) =>
+          prev.map((r) => (r.id === riderId ? { ...r, isOnline } : r))
+        );
+      },
+      onRiderKycUpdated: (riderId, status, remarks) => {
+        setRiders((prev) =>
+          prev.map((r) => (r.id === riderId ? { ...r, kycStatus: status, kycRemarks: remarks || r.kycRemarks } : r))
+        );
+      },
+      onWalletRechargeRequest: (req) => {
+        setWalletRechargeRequests((prev) => {
+          if (prev.some((r) => r.id === req.id)) return prev;
+          return [req, ...prev];
+        });
+      },
+      onWalletRechargeStatus: (requestId, status, amount, riderId) => {
+        setWalletRechargeRequests((prev) =>
+          prev.map((r) => (r.id === requestId ? { ...r, status } : r))
+        );
+        if (status === 'approved' && amount && riderId) {
+          setRiders((prev) =>
+            prev.map((r) =>
+              r.id === riderId ? { ...r, walletBalance: (r.walletBalance || 0) + amount } : r
+            )
+          );
+        }
+      },
+      onSupportMessage: (msg) => {
+        setSupportChatMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+      },
+      onRequestStateSnapshot: () => {
+        return { orders, riders };
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [orders, riders]);
+
+  // Supabase orders sync & Realtime listener fallback
   useEffect(() => {
     const fetchCloudOrders = async () => {
       if (isSupabaseConfigured) {
@@ -162,7 +246,18 @@ export default function App() {
           if (!error && data && data.length > 0) {
             const mappedOrders: Order[] = data.map((d: any) => d.payload as Order).filter(Boolean);
             if (mappedOrders.length > 0) {
-              setOrders(mappedOrders);
+              setOrders((prev) => {
+                const map = new Map<string, Order>();
+                mappedOrders.forEach((o) => {
+                  if (o && o.id) map.set(o.id, o);
+                });
+                prev.forEach((o) => {
+                  if (o && o.id && !map.has(o.id)) map.set(o.id, o);
+                });
+                return Array.from(map.values()).sort(
+                  (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+                );
+              });
             }
           }
         } catch (e) {
@@ -200,25 +295,10 @@ export default function App() {
     };
     window.addEventListener('storage', handleStorage);
 
-    const pollInterval = setInterval(() => {
-      if (!isSupabaseConfigured) {
-        const saved = localStorage.getItem('qd_orders_v5');
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && JSON.stringify(parsed) !== JSON.stringify(orders)) {
-              setOrders(parsed);
-            }
-          } catch (err) {}
-        }
-      }
-    }, 2000);
-
     return () => {
       window.removeEventListener('storage', handleStorage);
-      clearInterval(pollInterval);
     };
-  }, [orders]);
+  }, []);
 
   // Platform Recharge QR code managed by admin
   const [platformQrImage, setPlatformQrImage] = useState<string>(() => {
@@ -259,6 +339,7 @@ export default function App() {
       createdAt: new Date().toISOString(),
     };
     setWalletRechargeRequests(prev => [newReq, ...prev]);
+    broadcastSyncEvent({ type: 'WALLET_RECHARGE_REQUEST', rechargeRequest: newReq });
 
     const chatMsg: SupportChatMessage = {
       id: 'msg_' + Date.now(),
@@ -270,11 +351,13 @@ export default function App() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setSupportChatMessages(prev => [...prev, chatMsg]);
+    broadcastSyncEvent({ type: 'SUPPORT_MESSAGE', supportMessage: chatMsg });
   };
 
   const handleApproveRechargeRequest = (requestId: string, amount: number, riderId: string) => {
     setWalletRechargeRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'approved' } : r));
     setRiders(prev => prev.map(r => r.id === riderId ? { ...r, walletBalance: (r.walletBalance || 0) + amount } : r));
+    broadcastSyncEvent({ type: 'WALLET_RECHARGE_STATUS', requestId, rechargeStatus: 'approved', rechargeAmount: amount, riderId });
 
     const chatMsg: SupportChatMessage = {
       id: 'msg_' + Date.now(),
@@ -285,10 +368,12 @@ export default function App() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setSupportChatMessages(prev => [...prev, chatMsg]);
+    broadcastSyncEvent({ type: 'SUPPORT_MESSAGE', supportMessage: chatMsg });
   };
 
   const handleRejectRechargeRequest = (requestId: string, riderId: string) => {
     setWalletRechargeRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'rejected' } : r));
+    broadcastSyncEvent({ type: 'WALLET_RECHARGE_STATUS', requestId, rechargeStatus: 'rejected', riderId });
     const chatMsg: SupportChatMessage = {
       id: 'msg_' + Date.now(),
       riderId: riderId,
@@ -297,6 +382,7 @@ export default function App() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setSupportChatMessages(prev => [...prev, chatMsg]);
+    broadcastSyncEvent({ type: 'SUPPORT_MESSAGE', supportMessage: chatMsg });
   };
 
   const handleSendSupportMessage = (msg: { riderId: string; sender: 'rider' | 'admin'; text: string; screenshotUrl?: string; amount?: number }) => {
@@ -310,6 +396,7 @@ export default function App() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setSupportChatMessages(prev => [...prev, newMsg]);
+    broadcastSyncEvent({ type: 'SUPPORT_MESSAGE', supportMessage: newMsg });
   };
 
   // Active Feed tab for Customer view
@@ -438,6 +525,7 @@ export default function App() {
   const handleCreateOrder = (newOrder: Order) => {
     setOrders((prev) => [newOrder, ...prev]);
     syncOrderToCloud(newOrder);
+    broadcastSyncEvent({ type: 'ORDER_CREATED', order: newOrder });
   };
 
   // Accept Order Handler (Rider or Customer/Admin accepts a pending request)
@@ -462,6 +550,7 @@ export default function App() {
             acceptedAt: new Date().toISOString(),
           };
           syncOrderToCloud(updated);
+          broadcastSyncEvent({ type: 'ORDER_UPDATED', order: updated });
           return updated;
         }
         return ord;
@@ -476,6 +565,7 @@ export default function App() {
         if (ord.id === orderId) {
           const updated = { ...ord, status: 'cancelled' as const };
           syncOrderToCloud(updated);
+          broadcastSyncEvent({ type: 'ORDER_UPDATED', order: updated });
           return updated;
         }
         return ord;
@@ -497,6 +587,7 @@ export default function App() {
             paymentStatus: isDone ? ('completed' as const) : ord.paymentStatus,
           };
           syncOrderToCloud(updated);
+          broadcastSyncEvent({ type: 'ORDER_UPDATED', order: updated });
           return updated;
         }
         return ord;
@@ -538,6 +629,7 @@ export default function App() {
   const handleUpdateOrder = (updatedOrder: Order) => {
     setOrders((prev) => prev.map((ord) => ord.id === updatedOrder.id ? updatedOrder : ord));
     syncOrderToCloud(updatedOrder);
+    broadcastSyncEvent({ type: 'ORDER_UPDATED', order: updatedOrder });
   };
 
   // Admin Jump to Customer Feed Tab
@@ -575,6 +667,7 @@ export default function App() {
         return r;
       })
     );
+    broadcastSyncEvent({ type: 'RIDER_KYC_UPDATED', riderId, kycStatus: status, kycRemarks: remarks });
   };
 
   // Logout Handlers
@@ -598,11 +691,16 @@ export default function App() {
   };
 
   const handleToggleRiderOnline = (riderId: string, status?: boolean) => {
-    setRiders((prev) =>
-      prev.map((r) =>
+    setRiders((prev) => {
+      const nextRiders = prev.map((r) =>
         r.id === riderId ? { ...r, isOnline: status !== undefined ? status : !r.isOnline } : r
-      )
-    );
+      );
+      const target = nextRiders.find((r) => r.id === riderId);
+      if (target) {
+        broadcastSyncEvent({ type: 'RIDER_STATUS_UPDATED', riderId, isOnline: target.isOnline });
+      }
+      return nextRiders;
+    });
   };
 
   const handleUpdateCustomerPhoto = (photoUrl: string) => {

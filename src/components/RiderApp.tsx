@@ -575,13 +575,19 @@ export const RiderApp: React.FC<RiderAppProps> = ({
           </div>
         )}
 
-            <div className="flex items-center justify-between bg-amber-50 border border-amber-200 p-4 rounded-2xl">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200 p-4 rounded-2xl">
               <div>
-                <h2 className="text-base font-bold font-heading text-amber-900">
-                  Available Pending Order Requests ({pendingRequests.length})
-                </h2>
-                <p className="text-xs text-amber-800">
-                  Click Accept Order to claim a booking and start pickup immediately.
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base font-bold font-heading text-amber-900">
+                    Available Pending Order Requests ({pendingRequests.length})
+                  </h2>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span>Live Multi-Device Sync</span>
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800 mt-0.5">
+                  Orders placed on customer mobile phones appear here instantly in real-time.
                 </p>
               </div>
             </div>
