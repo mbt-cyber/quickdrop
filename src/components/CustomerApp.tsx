@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MapPicker } from './MapPicker';
 import { uploadQuickDropFile } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { playNewOrderChime } from '../lib/syncEngine';
 import {
   Order,
   UserProfile,
@@ -154,6 +155,36 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     }
   };
 
+  // Real-Time Notification & Auto-Transition when a Pending Order is Accepted by Rider
+  const [justAcceptedOrder, setJustAcceptedOrder] = useState<Order | null>(null);
+  const [recentlyMovedOrderId, setRecentlyMovedOrderId] = useState<string | null>(null);
+  const prevOrdersRef = useRef<Order[]>(orders);
+
+  useEffect(() => {
+    const prevOrders = prevOrdersRef.current;
+    prevOrdersRef.current = orders;
+
+    // Check if any order moved from 'pending' to 'running'
+    for (const curr of orders) {
+      const prev = prevOrders.find((o) => o.id === curr.id);
+      if (prev && prev.status === 'pending' && curr.status === 'running') {
+        setJustAcceptedOrder(curr);
+        setRecentlyMovedOrderId(curr.id);
+        try {
+          playNewOrderChime();
+        } catch (e) {}
+
+        // Auto-switch customer view to 'running' tab to show the running order with live tracking
+        setActiveTab('running');
+
+        const timer = setTimeout(() => {
+          setJustAcceptedOrder((latest) => (latest?.id === curr.id ? null : latest));
+        }, 9000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [orders, setActiveTab]);
+
   // Booking Form State - Start empty (null) as requested
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
   const [destination, setDestination] = useState<LocationPoint | null>(null);
@@ -250,6 +281,13 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
       otpCode: random4DigitOtp,
     };
 
+    // Store booked order ID locally
+    try {
+      const stored = localStorage.getItem('qd_my_booked_order_ids');
+      const list = stored ? JSON.parse(stored) : [];
+      localStorage.setItem('qd_my_booked_order_ids', JSON.stringify([newOrder.id, ...list.slice(0, 50)]));
+    } catch (e) {}
+
     setTimeout(() => {
       onCreateOrder(newOrder);
       setIsBooking(false);
@@ -259,7 +297,24 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   };
 
   // Filter Orders for Customer Feeds
-  const myOrders = orders.filter((o) => o.customerId === currentUser.id);
+  const myOrders = useMemo(() => {
+    let savedLocalOrderIds: string[] = [];
+    try {
+      const stored = localStorage.getItem('qd_my_booked_order_ids');
+      savedLocalOrderIds = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      savedLocalOrderIds = [];
+    }
+
+    return orders.filter((o) => {
+      if (o.customerId && currentUser.id && o.customerId === currentUser.id) return true;
+      if (savedLocalOrderIds.includes(o.id)) return true;
+      if (currentUser.phone && (o.customerPhone === currentUser.phone || o.sender?.phone === currentUser.phone)) return true;
+      if (!currentUser.id || currentUser.id === 'usr_default') return true;
+      return false;
+    });
+  }, [orders, currentUser]);
+
   const pendingOrders = myOrders.filter((o) => o.status === 'pending');
   const runningOrders = myOrders.filter((o) => o.status === 'running');
   const finishedOrders = myOrders.filter((o) => o.status === 'finished');
@@ -411,6 +466,61 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Floating Real-Time Toast: When a pending order is accepted by rider */}
+      {justAcceptedOrder && (
+        <div className="fixed top-20 left-3 right-3 sm:left-auto sm:right-6 sm:w-96 z-50 bg-slate-900/95 backdrop-blur-md text-white p-4 rounded-2xl shadow-2xl border-2 border-emerald-500 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 flex items-center justify-center font-black text-lg shrink-0 shadow-sm animate-pulse">
+              ✓
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                  <span>Rider Accepted Order!</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setJustAcceptedOrder(null)}
+                  className="text-slate-400 hover:text-white text-xs p-1 cursor-pointer"
+                  aria-label="Close notification"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-sm font-bold text-white mt-0.5 truncate">
+                {justAcceptedOrder.orderNumber} • {justAcceptedOrder.riderName || 'Delivery Partner'}
+              </p>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Your pending request moved to <strong>Running Orders</strong>. Partner is heading to pickup location!
+              </p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('running');
+                    setJustAcceptedOrder(null);
+                  }}
+                  className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>View Live Running Order &rarr;</span>
+                </button>
+                {justAcceptedOrder.riderPhone && (
+                  <a
+                    href={`tel:${justAcceptedOrder.riderPhone}`}
+                    className="p-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 rounded-xl text-xs flex items-center justify-center transition-colors shrink-0"
+                    title="Call Rider"
+                  >
+                    <Phone className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
         {/* ========================================================
@@ -978,6 +1088,34 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               </div>
             </div>
 
+            {/* Notification when orders are active in Running tab */}
+            {runningOrders.length > 0 && (
+              <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-4 rounded-2xl border border-blue-500/50 shadow-md flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center font-bold shrink-0">
+                    <Package className="w-5 h-5 animate-bounce" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                      <span>{runningOrders.length} Order(s) Accepted & Active</span>
+                    </div>
+                    <p className="text-xs text-slate-200 mt-0.5">
+                      Delivery partner is assigned. Live tracking is active in Running Orders feed.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('running')}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white font-extrabold rounded-xl text-xs transition-all shadow-md cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95"
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>Go to Running Feed &rarr;</span>
+                </button>
+              </div>
+            )}
+
             {/* Vertical Feed List View */}
             {pendingOrders.length === 0 ? (
               <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-4">
@@ -986,14 +1124,26 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                 </div>
                 <h3 className="text-lg font-bold text-slate-800 font-heading">No Pending Requests</h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  All your booked orders have been picked up by riders or completed.
+                  {runningOrders.length > 0
+                    ? `Your pending requests have been accepted by riders and moved to Running Orders!`
+                    : `All your booked orders have been picked up by riders or completed.`}
                 </p>
-                <button
-                  onClick={() => setActiveTab('book')}
-                  className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl text-xs hover:bg-indigo-700 transition-colors"
-                >
-                  Book New Order Now
-                </button>
+                <div className="flex items-center justify-center gap-2">
+                  {runningOrders.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab('running')}
+                      className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700 transition-colors shadow-xs"
+                    >
+                      View {runningOrders.length} Running Order(s)
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setActiveTab('book')}
+                    className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-xl text-xs hover:bg-indigo-700 transition-colors"
+                  >
+                    Book New Order Now
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-4">
@@ -1208,11 +1358,28 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               </div>
             ) : (
               <div className="space-y-6">
-                {filteredRunningOrders.map((ord) => (
+                {filteredRunningOrders.map((ord) => {
+                  const isNewlyAccepted = ord.id === recentlyMovedOrderId || ord.id === justAcceptedOrder?.id;
+                  return (
                   <div
                     key={ord.id}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-0"
+                    className={`bg-white rounded-2xl border shadow-sm overflow-hidden space-y-0 transition-all ${
+                      isNewlyAccepted ? 'border-emerald-500 ring-2 ring-emerald-400/50 shadow-md' : 'border-slate-200'
+                    }`}
                   >
+                    {/* Highlighted Banner for newly accepted orders moved from pending */}
+                    {isNewlyAccepted && (
+                      <div className="bg-emerald-500 text-slate-950 px-4 py-2 text-xs font-black flex flex-wrap items-center justify-between gap-2 shadow-inner">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-slate-950 animate-ping"></span>
+                          <span>✓ ACCEPTED BY RIDER • MOVED TO RUNNING</span>
+                        </div>
+                        <span className="bg-slate-950 text-emerald-400 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
+                          LIVE TRACKING ACTIVE
+                        </span>
+                      </div>
+                    )}
+
                     {/* Top Status Bar */}
                     <div className="bg-indigo-900 text-white p-4 flex flex-wrap items-center justify-between gap-2">
                       <div>
@@ -1477,7 +1644,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

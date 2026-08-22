@@ -1,7 +1,7 @@
 import { Order, RiderProfile, SupportChatMessage, WalletRechargeRequest } from '../types';
 import { supabase, isSupabaseConfigured } from './supabase';
 
-const SYNC_TOPIC = 'quickdrop_orders_sync_v4';
+const SYNC_TOPIC = 'quickdrop_orders_sync_v5';
 const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 const DEVICE_ID = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
 
@@ -14,8 +14,7 @@ export type SyncEventType =
   | 'WALLET_RECHARGE_REQUEST'
   | 'WALLET_RECHARGE_STATUS'
   | 'SUPPORT_MESSAGE'
-  | 'REQUEST_STATE_SYNC'
-  | 'STATE_SNAPSHOT';
+  | 'INITIAL_SYNC';
 
 export interface SyncEvent {
   type: SyncEventType;
@@ -45,14 +44,13 @@ export interface SyncCallbacks {
   onWalletRechargeRequest?: (req: WalletRechargeRequest) => void;
   onWalletRechargeStatus?: (requestId: string, status: 'approved' | 'rejected', amount?: number, riderId?: string) => void;
   onSupportMessage?: (msg: SupportChatMessage) => void;
-  onRequestStateSnapshot?: () => { orders: Order[]; riders?: RiderProfile[] };
 }
 
 // Local BroadcastChannel for same-browser multi-tab sync
 let localChannel: BroadcastChannel | null = null;
 try {
   if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-    localChannel = new BroadcastChannel('quickdrop_local_sync_v4');
+    localChannel = new BroadcastChannel('quickdrop_local_sync_v5');
   }
 } catch (e) {
   console.warn('BroadcastChannel not supported:', e);
@@ -82,14 +80,14 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
 
   // 2. Broadcast globally across all mobile phones and browsers via ntfy HTTP relay
   try {
-    await fetch(SYNC_URL, {
+    fetch(SYNC_URL, {
       method: 'POST',
       body: payloadString,
       headers: {
         'Content-Type': 'application/json',
         'Title': `QuickDrop:${fullEvent.type}`,
       },
-    });
+    }).catch((e) => console.warn('ntfy send error:', e));
   } catch (err) {
     console.warn('Global ntfy sync publish error:', err);
   }
@@ -98,11 +96,11 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
   if (isSupabaseConfigured) {
     if (fullEvent.order) {
       try {
-        await supabase.from('orders').upsert([{
+        supabase.from('orders').upsert([{
           id: fullEvent.order.id,
           payload: fullEvent.order,
           created_at: fullEvent.order.createdAt || new Date().toISOString(),
-        }]);
+        }]).then(() => {});
       } catch (e) {
         console.warn('Supabase order upsert note:', e);
       }
@@ -116,20 +114,23 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
 export function playNewOrderChime() {
   try {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15); // A5
-    osc.frequency.exponentialRampToValueAtTime(1174.66, audioCtx.currentTime + 0.3); // D6
+    osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.12); // A5
+    osc.frequency.exponentialRampToValueAtTime(1174.66, audioCtx.currentTime + 0.25); // D6
     gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.45);
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start();
-    osc.stop(audioCtx.currentTime + 0.5);
+    osc.stop(audioCtx.currentTime + 0.45);
   } catch (e) {
-    // AudioContext blocked by browser autoplay policy before user gesture
+    // AudioContext blocked by browser policy before first interaction
   }
 }
 
@@ -144,7 +145,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   const handleIncomingEvent = (event: SyncEvent, isHistorical = false) => {
     if (!event || !event.type) return;
 
-    // Ignore events sent by this exact device tab to avoid feedback loops (except historical replay)
+    // Ignore events sent by this exact device tab to avoid feedback loops (unless historical replay)
     if (event.senderDeviceId === DEVICE_ID && !isHistorical) {
       return;
     }
@@ -154,6 +155,12 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
       return;
     }
     processedMessageIds.add(eventKey);
+
+    // Keep memory set within reasonable size limit
+    if (processedMessageIds.size > 1000) {
+      const arr = Array.from(processedMessageIds);
+      arr.slice(0, 300).forEach(id => processedMessageIds.delete(id));
+    }
 
     switch (event.type) {
       case 'ORDER_CREATED':
@@ -174,24 +181,6 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
       case 'ORDER_DELETED':
         if (event.orderId && callbacks.onOrderDeleted) {
           callbacks.onOrderDeleted(event.orderId);
-        }
-        break;
-
-      case 'STATE_SNAPSHOT':
-        if (event.orders && callbacks.onOrdersBulkSync) {
-          callbacks.onOrdersBulkSync(event.orders);
-        }
-        break;
-
-      case 'REQUEST_STATE_SYNC':
-        if (callbacks.onRequestStateSnapshot && event.senderDeviceId !== DEVICE_ID) {
-          const snapshot = callbacks.onRequestStateSnapshot();
-          if (snapshot && snapshot.orders && snapshot.orders.length > 0) {
-            broadcastSyncEvent({
-              type: 'STATE_SNAPSHOT',
-              orders: snapshot.orders,
-            });
-          }
         }
         break;
 
@@ -249,16 +238,15 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
               handleIncomingEvent(event);
             }
           } catch (err) {
-            // Envelope parse fallback
+            // envelope parse fallback
           }
         };
 
         eventSource.onerror = () => {
-          // SSE will automatically reconnect, but we close and restart on prolonged error
           if (eventSource && eventSource.readyState === EventSource.CLOSED) {
             eventSource.close();
             if (isSubscribed) {
-              setTimeout(connectSSE, 4000);
+              setTimeout(connectSSE, 3000);
             }
           }
         };
@@ -270,7 +258,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
 
   connectSSE();
 
-  // 3. Historical Catch-up Poll (fetches recent 24 hours of orders on initial load & periodic fallback)
+  // 3. Historical Catch-up Poll (fetches recent orders on initial load & periodic fallback)
   const fetchRecentCloudEvents = async () => {
     try {
       const res = await fetch(`${SYNC_URL}/json?poll=1&since=24h`, { cache: 'no-store' });
@@ -287,28 +275,23 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
             handleIncomingEvent(event, true);
           }
         } catch (e) {
-          // Skip invalid lines
+          // skip invalid lines
         }
       }
     } catch (e) {
-      // Network retry
+      // network retry fallback
     }
   };
 
   // Run initial historical sync immediately
   fetchRecentCloudEvents();
 
-  // Request state snapshot from other active peers
-  setTimeout(() => {
-    broadcastSyncEvent({ type: 'REQUEST_STATE_SYNC' });
-  }, 1000);
-
-  // Background fallback poll every 3.5 seconds
+  // Periodic poll every 2.5s for seamless background fallback
   pollTimer = setInterval(() => {
     if (isSubscribed) {
       fetchRecentCloudEvents();
     }
-  }, 3500);
+  }, 2500);
 
   // Cleanup handler
   return () => {

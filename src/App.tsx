@@ -227,15 +227,12 @@ export default function App() {
           return [...prev, msg];
         });
       },
-      onRequestStateSnapshot: () => {
-        return { orders, riders };
-      },
     });
 
     return () => {
       unsubscribe();
     };
-  }, [orders, riders]);
+  }, []);
 
   // Supabase orders sync & Realtime listener fallback
   useEffect(() => {
@@ -504,7 +501,8 @@ export default function App() {
             rating: 5.0,
             vehicle: 'Honda Activa EV',
             plateNumber: 'PB65-EV-9911',
-            kycStatus: 'pending',
+            kycStatus: 'approved',
+            walletBalance: 250,
             currentLat: 30.7333,
             currentLng: 76.7794,
             isOnline: true,
