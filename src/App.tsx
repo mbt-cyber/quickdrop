@@ -139,6 +139,87 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_ORDERS;
   });
 
+  // Helper to sync order to Supabase cloud
+  const syncOrderToCloud = async (order: Order) => {
+    if (!isSupabaseConfigured) return;
+    try {
+      await supabase.from('orders').upsert([{
+        id: order.id,
+        payload: order,
+        created_at: order.createdAt || new Date().toISOString(),
+      }]);
+    } catch (e) {
+      console.warn('Failed to sync order to cloud:', e);
+    }
+  };
+
+  // Supabase orders sync & Realtime listener + cross-browser polling
+  useEffect(() => {
+    const fetchCloudOrders = async () => {
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+          if (!error && data && data.length > 0) {
+            const mappedOrders: Order[] = data.map((d: any) => d.payload as Order).filter(Boolean);
+            if (mappedOrders.length > 0) {
+              setOrders(mappedOrders);
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to fetch cloud orders:', e);
+        }
+      }
+    };
+    fetchCloudOrders();
+
+    if (isSupabaseConfigured) {
+      const channel = supabase
+        .channel('public:orders')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+          fetchCloudOrders();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+  }, []);
+
+  // Cross-browser & cross-tab orders synchronization via localStorage event and polling
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'qd_orders_v5' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            setOrders(parsed);
+          }
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    const pollInterval = setInterval(() => {
+      if (!isSupabaseConfigured) {
+        const saved = localStorage.getItem('qd_orders_v5');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && JSON.stringify(parsed) !== JSON.stringify(orders)) {
+              setOrders(parsed);
+            }
+          } catch (err) {}
+        }
+      }
+    }, 2000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      clearInterval(pollInterval);
+    };
+  }, [orders]);
+
   // Platform Recharge QR code managed by admin
   const [platformQrImage, setPlatformQrImage] = useState<string>(() => {
     return localStorage.getItem('qd_platform_qr_v1') || '';
@@ -356,6 +437,7 @@ export default function App() {
   // Create Order Handler
   const handleCreateOrder = (newOrder: Order) => {
     setOrders((prev) => [newOrder, ...prev]);
+    syncOrderToCloud(newOrder);
   };
 
   // Accept Order Handler (Rider or Customer/Admin accepts a pending request)
@@ -368,17 +450,19 @@ export default function App() {
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
-          return {
+          const updated = {
             ...ord,
-            status: 'running',
+            status: 'running' as const,
             riderId: assignedRider.id,
             riderName: assignedRider.name,
             riderPhone: assignedRider.phone,
             riderPhoto: assignedRider.photo,
             riderVehicle: `${assignedRider.vehicle} (${assignedRider.plateNumber})`,
-            trackingStep: 'accepted',
+            trackingStep: 'accepted' as const,
             acceptedAt: new Date().toISOString(),
           };
+          syncOrderToCloud(updated);
+          return updated;
         }
         return ord;
       })
@@ -388,7 +472,14 @@ export default function App() {
   // Decline Order Handler (Declines / cancels pending request)
   const handleDeclineOrder = (orderId: string) => {
     setOrders((prev) =>
-      prev.map((ord) => (ord.id === orderId ? { ...ord, status: 'cancelled' } : ord))
+      prev.map((ord) => {
+        if (ord.id === orderId) {
+          const updated = { ...ord, status: 'cancelled' as const };
+          syncOrderToCloud(updated);
+          return updated;
+        }
+        return ord;
+      })
     );
   };
 
@@ -398,13 +489,15 @@ export default function App() {
       prev.map((ord) => {
         if (ord.id === orderId) {
           const isDone = isFinished || trackingStep === 'delivered';
-          return {
+          const updated = {
             ...ord,
-            status: isDone ? 'finished' : 'running',
+            status: isDone ? ('finished' as const) : ('running' as const),
             trackingStep: trackingStep,
             deliveredAt: isDone ? new Date().toISOString() : ord.deliveredAt,
-            paymentStatus: isDone ? 'completed' : ord.paymentStatus,
+            paymentStatus: isDone ? ('completed' as const) : ord.paymentStatus,
           };
+          syncOrderToCloud(updated);
+          return updated;
         }
         return ord;
       })
@@ -444,6 +537,7 @@ export default function App() {
 
   const handleUpdateOrder = (updatedOrder: Order) => {
     setOrders((prev) => prev.map((ord) => ord.id === updatedOrder.id ? updatedOrder : ord));
+    syncOrderToCloud(updatedOrder);
   };
 
   // Admin Jump to Customer Feed Tab

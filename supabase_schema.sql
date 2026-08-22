@@ -73,3 +73,22 @@ SELECT
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
 */
+
+-- 6. Create orders table for multi-device cross-browser cloud synchronization between customers and riders
+CREATE TABLE IF NOT EXISTS public.orders (
+    id TEXT PRIMARY KEY,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Orders are viewable by everyone." ON public.orders;
+CREATE POLICY "Orders are viewable by everyone." ON public.orders FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Everyone can insert orders." ON public.orders;
+CREATE POLICY "Everyone can insert orders." ON public.orders FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Everyone can update orders." ON public.orders;
+CREATE POLICY "Everyone can update orders." ON public.orders FOR UPDATE USING (true);
+
