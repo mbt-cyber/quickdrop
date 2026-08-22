@@ -430,55 +430,10 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     Write exact pickup and drop addresses for instant distance & fare calculation
                   </p>
                 </div>
-                <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl">
-                  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
-                  <span className="text-xs font-bold text-indigo-900">
-                    Calculated Distance: <span className="text-indigo-600 underline font-black">{distanceKm} km</span>
-                  </span>
-                </div>
+
               </div>
 
-              {/* INTERACTIVE HD OPENSTREETMAP PICKER */}
-              <div className="space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-slate-800">
-                    🗺️ Interactive HD Map (Click map to pin Location A/B or search landmarks)
-                  </span>
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                    <span className="font-semibold">Clicking map sets:</span>
-                    <button
-                      type="button"
-                      onClick={() => setMapActiveMode('pickup')}
-                      className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
-                        mapActiveMode === 'pickup'
-                          ? 'bg-emerald-600 text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      Pickup (A)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMapActiveMode('destination')}
-                      className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
-                        mapActiveMode === 'destination'
-                          ? 'bg-rose-600 text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      Dropoff (B)
-                    </button>
-                  </div>
-                </div>
-                <MapPicker
-                  pickup={pickup}
-                  destination={destination}
-                  onSelectPickup={(loc) => setPickup(loc)}
-                  onSelectDestination={(loc) => setDestination(loc)}
-                  activeMode={mapActiveMode}
-                  setActiveMode={setMapActiveMode}
-                />
-              </div>
+
 
               {/* PICKUP & DROPOFF ADDRESS INPUT FIELDS */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -494,37 +449,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     </span>
                   </div>
 
-                  <textarea
-                    rows={2}
-                    value={pickup ? pickup.address : ''}
-                    onChange={(e) => {
-                      const newAddress = e.target.value;
-                      const coords = inferCoordinatesFromAddress(
-                        newAddress,
-                        pickup?.lat || 30.6425,
-                        pickup?.lng || 76.8173
-                      );
-                      setPickup({
-                        address: newAddress,
-                        lat: coords.lat,
-                        lng: coords.lng,
-                      });
-                    }}
-                    placeholder="Enter exact pickup address (e.g. House 302, VIP Road, Zirakpur)..."
-                    className="w-full p-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
-                  />
-                  {pickup && (
-                    <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
-                      <span>Coordinates: {pickup.lat.toFixed(4)}, {pickup.lng.toFixed(4)}</span>
-                    </div>
-                  )}
-
                   {/* Search Pickup Address Bar */}
-                  <div className="space-y-1.5 pt-1 relative">
+                  <div className="space-y-1.5 relative">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
                         <Search className="w-3 h-3 text-emerald-600" />
-                        <span>Search Pickup Address / Landmark</span>
+                        <span>Search Pickup Landmark / Area</span>
                       </span>
                     </div>
                     <div className="relative flex items-center">
@@ -579,6 +509,31 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                       </div>
                     )}
                   </div>
+
+                  <textarea
+                    rows={2}
+                    value={pickup ? pickup.address : ''}
+                    onChange={(e) => {
+                      const newAddress = e.target.value;
+                      const coords = inferCoordinatesFromAddress(
+                        newAddress,
+                        pickup?.lat || 30.6425,
+                        pickup?.lng || 76.8173
+                      );
+                      setPickup({
+                        address: newAddress,
+                        lat: coords.lat,
+                        lng: coords.lng,
+                      });
+                    }}
+                    placeholder="Enter exact pickup address (e.g. House 302, VIP Road, Zirakpur)..."
+                    className="w-full p-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
+                  />
+                  {pickup && (
+                    <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
+                      <span>Coordinates: {pickup.lat.toFixed(4)}, {pickup.lng.toFixed(4)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Dropoff Address */}
@@ -593,37 +548,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     </span>
                   </div>
 
-                  <textarea
-                    rows={2}
-                    value={destination ? destination.address : ''}
-                    onChange={(e) => {
-                      const newAddress = e.target.value;
-                      const coords = inferCoordinatesFromAddress(
-                        newAddress,
-                        destination?.lat || 30.7333,
-                        destination?.lng || 76.7794
-                      );
-                      setDestination({
-                        address: newAddress,
-                        lat: coords.lat,
-                        lng: coords.lng,
-                      });
-                    }}
-                    placeholder="Enter exact drop address (e.g. Tower A, QuarkCity, Phase 8B, Mohali)..."
-                    className="w-full p-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
-                  />
-                  {destination && (
-                    <div className="flex items-center justify-between text-[10px] text-rose-700 font-mono">
-                      <span>Coordinates: {destination.lat.toFixed(4)}, {destination.lng.toFixed(4)}</span>
-                    </div>
-                  )}
-
                   {/* Search Dropoff Address Bar */}
-                  <div className="space-y-1.5 pt-1 relative">
+                  <div className="space-y-1.5 relative">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold text-rose-800 flex items-center gap-1">
                         <Search className="w-3 h-3 text-rose-600" />
-                        <span>Search Dropoff Address / Landmark</span>
+                        <span>Search Dropoff Landmark / Area</span>
                       </span>
                     </div>
                     <div className="relative flex items-center">
@@ -672,70 +602,41 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             className="w-full text-left px-3 py-2 hover:bg-rose-50 transition-colors flex flex-col cursor-pointer"
                           >
                             <span className="text-xs font-bold text-rose-800">Use custom: "{dropoffSearchQuery}"</span>
-                            <span className="text-[10px] text-slate-500">Click to set as dropoff location</span>
+                            <span className="text-[10px] text-slate-500">Click to set as drop location</span>
                           </button>
                         )}
                       </div>
                     )}
                   </div>
+
+                  <textarea
+                    rows={2}
+                    value={destination ? destination.address : ''}
+                    onChange={(e) => {
+                      const newAddress = e.target.value;
+                      const coords = inferCoordinatesFromAddress(
+                        newAddress,
+                        destination?.lat || 30.7333,
+                        destination?.lng || 76.7794
+                      );
+                      setDestination({
+                        address: newAddress,
+                        lat: coords.lat,
+                        lng: coords.lng,
+                      });
+                    }}
+                    placeholder="Enter exact drop address (e.g. Tower A, QuarkCity, Phase 8B, Mohali)..."
+                    className="w-full p-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
+                  />
+                  {destination && (
+                    <div className="flex items-center justify-between text-[10px] text-rose-700 font-mono">
+                      <span>Coordinates: {destination.lat.toFixed(4)}, {destination.lng.toFixed(4)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* DISTANCE-WISE FARE BREAKDOWN CARD */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 text-white space-y-4 shadow-md border border-indigo-700/50">
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-indigo-800/80 pb-3">
-                  <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-300 block">
-                      Distance-Wise Fare Estimation
-                    </span>
-                    <h3 className="text-base font-bold text-white flex items-center gap-2">
-                      <span>Exact Calculated Distance:</span>
-                      <span className="text-emerald-400 font-extrabold underline font-mono text-lg">
-                        {distanceKm} km
-                      </span>
-                    </h3>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs text-indigo-200 block">Total Estimated Fare</span>
-                    <span className="text-2xl font-black text-emerald-400 font-heading">
-                      {formatCurrency(calculatedFare)}
-                    </span>
-                  </div>
-                </div>
 
-                {/* BREAKDOWN GRID */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div className="p-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 space-y-1">
-                    <span className="text-indigo-200 text-[10px] uppercase font-bold block">Base Delivery Fee</span>
-                    <div className="font-extrabold text-white text-sm">₹30</div>
-                    <span className="text-[10px] text-slate-300">Includes first 2.0 km</span>
-                  </div>
-
-                  <div className="p-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 space-y-1">
-                    <span className="text-indigo-200 text-[10px] uppercase font-bold block">Distance Fee (@ ₹10/km)</span>
-                    <div className="font-extrabold text-emerald-300 text-sm">
-                      +{formatCurrency(fareBreakdown.extraFare)}
-                    </div>
-                    <span className="text-[10px] text-slate-300">
-                      {fareBreakdown.extraKm} extra km × ₹10/km
-                    </span>
-                  </div>
-
-                  <div className="p-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/10 space-y-1">
-                    <span className="text-indigo-200 text-[10px] uppercase font-bold block">Handling / Surge</span>
-                    <div className="font-extrabold text-indigo-300 text-sm">
-                      +{formatCurrency(fareBreakdown.categorySurge)}
-                    </div>
-                    <span className="text-[10px] text-slate-300">
-                      {fareBreakdown.categoryLabel || 'Standard Category'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="text-[11px] text-indigo-200/90 leading-relaxed font-medium bg-black/30 px-3 py-2 rounded-xl border border-white/10">
-                  💡 <b>Fare Policy:</b> Fare updates automatically whenever pickup or dropoff locations are selected or modified. Pricing rate: <b>₹30 base charge</b> (first 2 km) + <b>₹10 per km</b> for distance beyond 2 km.
-                </div>
-              </div>
             </div>
 
             {/* SECTION 2: DELIVERY TYPE, RECIPIENT, PAYMENT & SUBMIT */}
@@ -745,29 +646,19 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     2. Select Delivery Type
                   </h2>
                   <p className="text-xs text-slate-500 mb-3">Choose the category of items you are sending</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                    {deliveryTypesList.map((item) => {
-                      const IconComp = item.icon;
-                      const isSelected = deliveryType === item.id;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setDeliveryType(item.id)}
-                          className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                            isSelected
-                              ? 'border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-2 ring-indigo-600/20 shadow-xs'
-                              : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                          }`}
-                        >
-                          <IconComp className={`w-5 h-5 mb-2 ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`} />
-                          <div>
-                            <div className="text-xs font-bold">{item.title}</div>
-                            <div className="text-[10px] text-slate-500 line-clamp-1">{item.desc}</div>
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div className="relative">
+                    <select
+                      value={deliveryType}
+                      onChange={(e) => setDeliveryType(e.target.value as DeliveryType)}
+                      required
+                      className="w-full px-3.5 py-3 text-xs sm:text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 shadow-2xs cursor-pointer"
+                    >
+                      {deliveryTypesList.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.title}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
