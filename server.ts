@@ -22,17 +22,15 @@ const NTFY_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 async function publishToGlobalMesh(event: any) {
   try {
     const rawPayload = JSON.stringify(event);
-    await fetch('https://ntfy.sh', {
+    await fetch(`https://ntfy.sh/${SYNC_TOPIC}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        topic: SYNC_TOPIC,
-        message: rawPayload,
-        title: `QD:${event.type || 'SYNC'}`,
-      }),
+      body: rawPayload,
+      headers: {
+        'Title': `QD:${event.type || 'SYNC'}`,
+      },
     });
   } catch (e) {
-    // Network or offline fallback
+    // Network fallback
   }
 }
 
@@ -48,6 +46,7 @@ function broadcastSSE(eventType: string, data: any) {
   sseClients.forEach((client) => {
     try {
       client.res.write(`data: ${payload}\n\n`);
+      (client.res as any).flush?.();
     } catch (e) {
       // Client may have disconnected
     }
@@ -58,7 +57,7 @@ function broadcastSSE(eventType: string, data: any) {
 function initServerGlobalMeshListener() {
   try {
     // Poll recent events on boot
-    fetch(`https://ntfy.sh/${SYNC_TOPIC}/json?poll=1&since=6h`)
+    fetch(`https://ntfy.sh/${SYNC_TOPIC}/json?poll=1&since=24h`)
       .then((res) => res.text())
       .then((text) => {
         const lines = text.trim().split('\n');
@@ -66,8 +65,9 @@ function initServerGlobalMeshListener() {
           if (!line) continue;
           try {
             const envelope = JSON.parse(line);
-            if (envelope.message) {
-              const event = JSON.parse(envelope.message);
+            const rawMsg = envelope.message || envelope.data;
+            if (rawMsg) {
+              const event = typeof rawMsg === 'string' ? JSON.parse(rawMsg) : rawMsg;
               if (event.order && (event.type === 'ORDER_CREATED' || event.type === 'ORDER_UPDATED')) {
                 ordersStore.set(event.order.id, event.order);
               } else if (event.orderId && event.type === 'ORDER_DELETED') {
@@ -120,6 +120,7 @@ async function startServer() {
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no',
     });
+    res.flushHeaders?.();
 
     const clientId = `client_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const newClient: SSEClient = { id: clientId, res };
@@ -136,6 +137,7 @@ async function startServer() {
         timestamp: new Date().toISOString(),
       })}\n\n`
     );
+    (res as any).flush?.();
 
     // Keep connection alive with ping every 15s
     const heartbeatTimer = setInterval(() => {

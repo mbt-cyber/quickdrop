@@ -121,16 +121,12 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
 
   // 3. Global ntfy HTTP relay fallback for cross-network & multi-device sync
   try {
-    fetch('https://ntfy.sh', {
+    fetch(`https://ntfy.sh/${SYNC_TOPIC}`, {
       method: 'POST',
+      body: payloadString,
       headers: {
-        'Content-Type': 'application/json',
+        'Title': `QD:${fullEvent.type}`,
       },
-      body: JSON.stringify({
-        topic: SYNC_TOPIC,
-        message: payloadString,
-        title: `QD:${fullEvent.type}`,
-      }),
     }).catch(() => {});
   } catch (err) {}
 
@@ -347,9 +343,10 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
 
         ntfySSE.onmessage = (e) => {
           try {
-            const parsedEnvelope = JSON.parse(e.data);
-            if (parsedEnvelope.message) {
-              const event: SyncEvent = JSON.parse(parsedEnvelope.message);
+            const envelope = JSON.parse(e.data);
+            const rawMsg = envelope.message || envelope.data;
+            if (rawMsg) {
+              const event: SyncEvent = typeof rawMsg === 'string' ? JSON.parse(rawMsg) : rawMsg;
               handleIncomingEvent(event);
             }
           } catch (err) {}
@@ -359,7 +356,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
           if (ntfySSE && ntfySSE.readyState === EventSource.CLOSED) {
             ntfySSE.close();
             if (isSubscribed) {
-              setTimeout(connectNtfySSE, 4000);
+              setTimeout(connectNtfySSE, 3000);
             }
           }
         };
@@ -380,8 +377,9 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
           if (!line) continue;
           try {
             const envelope = JSON.parse(line);
-            if (envelope.message) {
-              const event: SyncEvent = JSON.parse(envelope.message);
+            const rawMsg = envelope.message || envelope.data;
+            if (rawMsg) {
+              const event: SyncEvent = typeof rawMsg === 'string' ? JSON.parse(rawMsg) : rawMsg;
               handleIncomingEvent(event, true);
             }
           } catch (e) {}
@@ -390,9 +388,10 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
     } catch (e) {}
   };
 
+  // Perform initial fetch on boot
   fetchHistoricalMeshOrders();
 
-  // 5. Fast polling fallback (Fetches /api/orders every 1.5s & mesh every 3s to guarantee cross-phone sync)
+  // 5. Fast polling fallback (Fetches /api/orders every 1.5s to guarantee cross-phone sync without hitting external rate limits)
   const pollServerOrders = async () => {
     try {
       const res = await fetch('/api/orders', { cache: 'no-store' });
@@ -414,17 +413,26 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   };
   window.addEventListener('quickdrop_manual_sync', handleManualSync);
 
-  pollTimer = setInterval(() => {
-    if (isSubscribed) {
+  // Sync when phone wakes up or user returns to tab
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
       pollServerOrders();
       fetchHistoricalMeshOrders();
     }
-  }, 2000);
+  };
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  pollTimer = setInterval(() => {
+    if (isSubscribed) {
+      pollServerOrders();
+    }
+  }, 1500);
 
   // Cleanup handler
   return () => {
     isSubscribed = false;
     window.removeEventListener('quickdrop_manual_sync', handleManualSync);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
     if (pollTimer) clearInterval(pollTimer);
     if (serverSSE) {
       serverSSE.close();
