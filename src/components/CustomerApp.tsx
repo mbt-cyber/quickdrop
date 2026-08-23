@@ -80,9 +80,24 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   onUpdateOrder,
 }) => {
   const { signOut } = useAuth();
-  const [internalTab, setInternalTab] = useState<'book' | 'pending' | 'running' | 'finished' | 'profile'>('book');
-  const activeTab = externalTab || internalTab;
-  const setActiveTab = setExternalTab || setInternalTab;
+  const [currentTab, setCurrentTab] = useState<'book' | 'pending' | 'running' | 'finished' | 'profile'>(
+    externalTab || 'book'
+  );
+
+  // Synchronize when externalTab prop changes from parent (e.g. App.tsx order acceptance or navigation)
+  useEffect(() => {
+    if (externalTab) {
+      setCurrentTab(externalTab);
+    }
+  }, [externalTab]);
+
+  const activeTab = currentTab;
+  const setActiveTab = (tab: 'book' | 'pending' | 'running' | 'finished' | 'profile') => {
+    setCurrentTab(tab);
+    if (setExternalTab) {
+      setExternalTab(tab);
+    }
+  };
   const [uploadSuccessToast, setUploadSuccessToast] = useState(false);
   const profileFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -164,10 +179,15 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     const prevOrders = prevOrdersRef.current;
     prevOrdersRef.current = orders;
 
-    // Check if any order moved from 'pending' to 'running'
+    // Check if any order moved from 'pending' to 'running' or was recently accepted
     for (const curr of orders) {
       const prev = prevOrders.find((o) => o.id === curr.id);
-      if (prev && prev.status === 'pending' && curr.status === 'running') {
+      const isNowRunning = curr.status === 'running';
+      const wasPending = prev ? prev.status === 'pending' : false;
+      const isRecentAccepted =
+        curr.acceptedAt && Date.now() - new Date(curr.acceptedAt).getTime() < 30000;
+
+      if (isNowRunning && (wasPending || isRecentAccepted)) {
         setJustAcceptedOrder(curr);
         setRecentlyMovedOrderId(curr.id);
         setRunningFilter('all'); // Ensure newly accepted order is visible regardless of sub-filter
@@ -177,14 +197,20 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
 
         // Auto-switch customer view to 'running' tab to show the running order with live tracking
         setActiveTab('running');
-
-        const timer = setTimeout(() => {
-          setJustAcceptedOrder((latest) => (latest?.id === curr.id ? null : latest));
-        }, 9000);
-        return () => clearTimeout(timer);
+        break;
       }
     }
-  }, [orders, setActiveTab]);
+  }, [orders]);
+
+  // Clear auto-toast after 10s
+  useEffect(() => {
+    if (justAcceptedOrder) {
+      const timer = setTimeout(() => {
+        setJustAcceptedOrder(null);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [justAcceptedOrder]);
 
   // Booking Form State - Start empty (null) as requested
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
@@ -310,8 +336,22 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
     return orders.filter((o) => {
       if (o.customerId && currentUser.id && o.customerId === currentUser.id) return true;
       if (savedLocalOrderIds.includes(o.id)) return true;
-      if (currentUser.phone && (o.customerPhone === currentUser.phone || o.sender?.phone === currentUser.phone)) return true;
-      if (!currentUser.id || currentUser.id === 'usr_default') return true;
+      if (
+        currentUser.phone &&
+        (o.customerPhone === currentUser.phone ||
+          o.sender?.phone === currentUser.phone ||
+          o.recipient?.phone === currentUser.phone)
+      ) {
+        return true;
+      }
+      if (
+        !currentUser.id ||
+        currentUser.id === 'usr_default' ||
+        currentUser.id.startsWith('usr_') ||
+        currentUser.id.startsWith('cust_')
+      ) {
+        return true;
+      }
       return false;
     });
   }, [orders, currentUser]);

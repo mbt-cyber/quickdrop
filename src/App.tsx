@@ -165,19 +165,15 @@ export default function App() {
         });
       },
       onOrderUpdated: (updatedOrder) => {
+        if (!updatedOrder) return;
+        if (updatedOrder.status === 'running') {
+          // Immediately switch customer view to running tab and chime
+          setCustomerFeedTab('running');
+          try {
+            playNewOrderChime();
+          } catch (e) {}
+        }
         setOrders((prev) => {
-          const prevOrder = prev.find((o) => o.id === updatedOrder.id);
-          const wasPending = prevOrder && prevOrder.status === 'pending';
-          const isNowRunning = updatedOrder.status === 'running';
-
-          if (wasPending && isNowRunning) {
-            // Automatically switch customer feed tab to 'running'
-            setCustomerFeedTab('running');
-            try {
-              playNewOrderChime();
-            } catch (e) {}
-          }
-
           const exists = prev.some((o) => o.id === updatedOrder.id);
           if (exists) {
             return prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
@@ -190,20 +186,11 @@ export default function App() {
       },
       onOrdersBulkSync: (syncedOrders) => {
         if (!syncedOrders || !Array.isArray(syncedOrders)) return;
+        const hasRunningOrder = syncedOrders.some((s) => s && s.status === 'running');
+        if (hasRunningOrder) {
+          setCustomerFeedTab('running');
+        }
         setOrders((prev) => {
-          // Detect if any order moved from pending to running
-          for (const synced of syncedOrders) {
-            if (synced && synced.id && synced.status === 'running') {
-              const localPrev = prev.find((p) => p.id === synced.id);
-              if (localPrev && localPrev.status === 'pending') {
-                setCustomerFeedTab('running');
-                try {
-                  playNewOrderChime();
-                } catch (e) {}
-                break;
-              }
-            }
-          }
           const map = new Map<string, Order>();
           syncedOrders.forEach((o) => {
             if (o && o.id) map.set(o.id, o);
@@ -316,6 +303,10 @@ export default function App() {
         try {
           const parsed = JSON.parse(e.newValue);
           if (Array.isArray(parsed)) {
+            const hasRunning = parsed.some((o: Order) => o.status === 'running');
+            if (hasRunning) {
+              setCustomerFeedTab('running');
+            }
             setOrders(parsed);
           }
         } catch (err) {}
@@ -564,6 +555,12 @@ export default function App() {
       alert('Verification Required: Only verified delivery partners with approved KYC documents can accept pending requests.');
       return;
     }
+    // Automatically trigger Customer feed to switch to Running tab immediately
+    setCustomerFeedTab('running');
+    try {
+      playNewOrderChime();
+    } catch (e) {}
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
@@ -585,8 +582,6 @@ export default function App() {
         return ord;
       })
     );
-    // Automatically trigger Customer feed to switch to Running tab
-    setCustomerFeedTab('running');
   };
 
   // Decline Order Handler (Declines / cancels pending request)

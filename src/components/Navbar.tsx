@@ -37,10 +37,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-bold text-lg tracking-tight font-heading text-slate-900">
                   QuickDrop<span className="text-indigo-600">Delivery</span>
                 </span>
-                <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-extrabold tracking-wide shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span>LIVE SYNC</span>
-                </span>
               </div>
               <p className="text-[11px] text-slate-500 hidden md:block">
                 Tricity On-Demand Parcel & Courier Logistics
