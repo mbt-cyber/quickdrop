@@ -2,7 +2,7 @@ import { Order, RiderProfile, SupportChatMessage, WalletRechargeRequest } from '
 import { supabase, isSupabaseConfigured } from './supabase';
 
 const SYNC_TOPIC = 'quickdrop_orders_sync_v5';
-const SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
+const NTFY_SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
 const DEVICE_ID = `dev_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
 
 export type SyncEventType =
@@ -56,7 +56,7 @@ try {
   console.warn('BroadcastChannel not supported:', e);
 }
 
-// Memory cache of processed message IDs to avoid double-processing
+// Memory cache of processed message IDs to avoid duplicate processing loops
 const processedMessageIds = new Set<string>();
 
 /**
@@ -78,38 +78,114 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
     console.warn('Local broadcast error:', e);
   }
 
-  // 2. Broadcast globally across all mobile phones and browsers via ntfy HTTP relay
+  // 2. Direct server API dispatch (Instant SSE broadcast to all connected mobile phones)
   try {
-    fetch(SYNC_URL, {
+    if (fullEvent.type === 'ORDER_CREATED' && fullEvent.order) {
+      fetch('/api/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': DEVICE_ID,
+        },
+        body: JSON.stringify(fullEvent.order),
+      }).catch(() => {});
+    } else if (fullEvent.type === 'ORDER_UPDATED' && fullEvent.order) {
+      fetch(`/api/orders/${encodeURIComponent(fullEvent.order.id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': DEVICE_ID,
+        },
+        body: JSON.stringify(fullEvent.order),
+      }).catch(() => {});
+    } else if (fullEvent.type === 'ORDER_DELETED' && fullEvent.orderId) {
+      fetch(`/api/orders/${encodeURIComponent(fullEvent.orderId)}`, {
+        method: 'DELETE',
+        headers: {
+          'x-device-id': DEVICE_ID,
+        },
+      }).catch(() => {});
+    } else {
+      fetch('/api/sync/event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': DEVICE_ID,
+        },
+        body: payloadString,
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('Internal server event dispatch error:', e);
+  }
+
+  // 3. Global ntfy HTTP relay fallback for networks without direct SSE
+  try {
+    fetch(NTFY_SYNC_URL, {
       method: 'POST',
       body: payloadString,
       headers: {
         'Content-Type': 'application/json',
         'Title': `QuickDrop:${fullEvent.type}`,
       },
-    }).catch((e) => console.warn('ntfy send error:', e));
-  } catch (err) {
-    console.warn('Global ntfy sync publish error:', err);
-  }
+    }).catch(() => {});
+  } catch (err) {}
 
-  // 3. Parallel write to Supabase if configured
-  if (isSupabaseConfigured) {
-    if (fullEvent.order) {
-      try {
-        supabase.from('orders').upsert([{
-          id: fullEvent.order.id,
-          payload: fullEvent.order,
-          created_at: fullEvent.order.createdAt || new Date().toISOString(),
-        }]).then(() => {});
-      } catch (e) {
-        console.warn('Supabase order upsert note:', e);
-      }
+  // 4. Parallel write to Supabase if configured
+  if (isSupabaseConfigured && fullEvent.order) {
+    try {
+      // Upsert into hybrid JSONB orders table
+      supabase.from('orders').upsert([{
+        id: fullEvent.order.id,
+        payload: fullEvent.order,
+        created_at: fullEvent.order.createdAt || new Date().toISOString(),
+      }]).then(() => {});
+
+      // Also upsert into customer_orders table if relational schema is active
+      const ord = fullEvent.order;
+      supabase.from('customer_orders').upsert([{
+        id: ord.id,
+        order_number: ord.orderNumber,
+        customer_id: ord.customerId || 'cust_default',
+        customer_name: ord.customerName || ord.sender?.name,
+        customer_phone: ord.customerPhone || ord.sender?.phone,
+        pickup_address: ord.pickup?.address,
+        pickup_lat: ord.pickup?.lat,
+        pickup_lng: ord.pickup?.lng,
+        pickup_landmark: ord.pickup?.landmark,
+        destination_address: ord.destination?.address,
+        destination_lat: ord.destination?.lat,
+        destination_lng: ord.destination?.lng,
+        destination_landmark: ord.destination?.landmark,
+        sender_name: ord.sender?.name,
+        sender_phone: ord.sender?.phone,
+        sender_notes: ord.sender?.notes,
+        recipient_name: ord.recipient?.name,
+        recipient_phone: ord.recipient?.phone,
+        recipient_notes: ord.recipient?.notes,
+        delivery_type: ord.deliveryType,
+        schedule_type: ord.scheduleType,
+        booking_day_and_time: ord.bookingDayAndTime,
+        distance_km: ord.distanceKm,
+        fare: ord.fare,
+        payment_method: ord.paymentMethod,
+        payment_status: ord.paymentStatus,
+        otp_code: ord.otpCode,
+        status: ord.status,
+        tracking_step: ord.trackingStep,
+        rider_id: ord.riderId,
+        rider_name: ord.riderName,
+        rider_phone: ord.riderPhone,
+        created_at: ord.createdAt || new Date().toISOString(),
+      }]).then(() => {});
+    } catch (e) {
+      console.warn('Supabase order upsert error:', e);
     }
   }
 }
 
 /**
- * Play a gentle notification sound when a new order arrives on Rider phone
+ * Play a clear audio chime when a new order arrives on the Rider's phone
  */
 export function playNewOrderChime() {
   try {
@@ -130,7 +206,7 @@ export function playNewOrderChime() {
     osc.start();
     osc.stop(audioCtx.currentTime + 0.45);
   } catch (e) {
-    // AudioContext blocked by browser policy before first interaction
+    // AudioContext blocked by browser autoplay policy before user gesture
   }
 }
 
@@ -139,13 +215,14 @@ export function playNewOrderChime() {
  */
 export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   let isSubscribed = true;
-  let eventSource: EventSource | null = null;
+  let serverSSE: EventSource | null = null;
+  let ntfySSE: EventSource | null = null;
   let pollTimer: any = null;
 
   const handleIncomingEvent = (event: SyncEvent, isHistorical = false) => {
     if (!event || !event.type) return;
 
-    // Ignore events sent by this exact device tab to avoid feedback loops (unless historical replay)
+    // Ignore events generated by this exact device tab unless historical
     if (event.senderDeviceId === DEVICE_ID && !isHistorical) {
       return;
     }
@@ -156,10 +233,10 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
     }
     processedMessageIds.add(eventKey);
 
-    // Keep memory set within reasonable size limit
-    if (processedMessageIds.size > 1000) {
+    // Maintain memory cache bound
+    if (processedMessageIds.size > 1500) {
       const arr = Array.from(processedMessageIds);
-      arr.slice(0, 300).forEach(id => processedMessageIds.delete(id));
+      arr.slice(0, 500).forEach(id => processedMessageIds.delete(id));
     }
 
     switch (event.type) {
@@ -216,7 +293,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
     }
   };
 
-  // 1. Listen for local tab broadcasts
+  // 1. Local browser tabs sync
   const handleLocalMessage = (msgEvent: MessageEvent) => {
     if (msgEvent.data) {
       handleIncomingEvent(msgEvent.data);
@@ -224,82 +301,104 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   };
   localChannel?.addEventListener('message', handleLocalMessage);
 
-  // 2. Real-Time SSE (Server-Sent Events) connection to ntfy
-  const connectSSE = () => {
+  // 2. Direct Server-Sent Events (SSE) Stream to our app's own server
+  const connectServerSSE = () => {
     try {
       if (typeof window !== 'undefined' && 'EventSource' in window) {
-        eventSource = new EventSource(`${SYNC_URL}/sse`);
+        serverSSE = new EventSource('/api/events');
 
-        eventSource.onmessage = (e) => {
+        serverSSE.onmessage = (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            if (data.type === 'CONNECTED') {
+              if (data.orders && Array.isArray(data.orders) && data.orders.length > 0 && callbacks.onOrdersBulkSync) {
+                callbacks.onOrdersBulkSync(data.orders);
+              }
+            } else if (data.type) {
+              handleIncomingEvent(data as SyncEvent);
+            }
+          } catch (err) {}
+        };
+
+        serverSSE.onerror = () => {
+          if (serverSSE && serverSSE.readyState === EventSource.CLOSED) {
+            serverSSE.close();
+            if (isSubscribed) {
+              setTimeout(connectServerSSE, 2000);
+            }
+          }
+        };
+      }
+    } catch (err) {
+      console.warn('Server SSE connection note:', err);
+    }
+  };
+
+  connectServerSSE();
+
+  // 3. ntfy SSE connection for cross-network redundancy
+  const connectNtfySSE = () => {
+    try {
+      if (typeof window !== 'undefined' && 'EventSource' in window) {
+        ntfySSE = new EventSource(`${NTFY_SYNC_URL}/sse`);
+
+        ntfySSE.onmessage = (e) => {
           try {
             const parsedEnvelope = JSON.parse(e.data);
             if (parsedEnvelope.message) {
               const event: SyncEvent = JSON.parse(parsedEnvelope.message);
               handleIncomingEvent(event);
             }
-          } catch (err) {
-            // envelope parse fallback
-          }
+          } catch (err) {}
         };
 
-        eventSource.onerror = () => {
-          if (eventSource && eventSource.readyState === EventSource.CLOSED) {
-            eventSource.close();
+        ntfySSE.onerror = () => {
+          if (ntfySSE && ntfySSE.readyState === EventSource.CLOSED) {
+            ntfySSE.close();
             if (isSubscribed) {
-              setTimeout(connectSSE, 3000);
+              setTimeout(connectNtfySSE, 4000);
             }
           }
         };
       }
-    } catch (err) {
-      console.warn('SSE connection init note:', err);
-    }
+    } catch (err) {}
   };
 
-  connectSSE();
+  connectNtfySSE();
 
-  // 3. Historical Catch-up Poll (fetches recent orders on initial load & periodic fallback)
-  const fetchRecentCloudEvents = async () => {
+  // 4. Fast polling fallback (Fetches /api/orders every 1.5s to ensure zero missed orders on mobile backgrounding)
+  const pollServerOrders = async () => {
     try {
-      const res = await fetch(`${SYNC_URL}/json?poll=1&since=24h`, { cache: 'no-store' });
-      if (!res.ok) return;
-      const text = await res.text();
-      if (!text.trim()) return;
-
-      const lines = text.trim().split('\n');
-      for (const line of lines) {
-        try {
-          const envelope = JSON.parse(line);
-          if (envelope.message) {
-            const event: SyncEvent = JSON.parse(envelope.message);
-            handleIncomingEvent(event, true);
-          }
-        } catch (e) {
-          // skip invalid lines
+      const res = await fetch('/api/orders', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.orders) && callbacks.onOrdersBulkSync) {
+          callbacks.onOrdersBulkSync(json.orders);
         }
       }
-    } catch (e) {
-      // network retry fallback
-    }
+    } catch (e) {}
   };
 
-  // Run initial historical sync immediately
-  fetchRecentCloudEvents();
+  // Immediate sync fetch
+  pollServerOrders();
 
-  // Periodic poll every 2.5s for seamless background fallback
   pollTimer = setInterval(() => {
     if (isSubscribed) {
-      fetchRecentCloudEvents();
+      pollServerOrders();
     }
-  }, 2500);
+  }, 1500);
 
   // Cleanup handler
   return () => {
     isSubscribed = false;
     if (pollTimer) clearInterval(pollTimer);
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
+    if (serverSSE) {
+      serverSSE.close();
+      serverSSE = null;
+    }
+    if (ntfySSE) {
+      ntfySSE.close();
+      ntfySSE = null;
     }
     localChannel?.removeEventListener('message', handleLocalMessage);
   };
