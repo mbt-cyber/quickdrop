@@ -1,7 +1,8 @@
 import React from 'react';
 import { Role, UserProfile, RiderProfile, Order } from '../types';
-import { User, Bike, Phone, LogOut, ShieldCheck, Star } from 'lucide-react';
+import { User, Bike, Phone, LogOut, ShieldCheck, Star, Database } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface NavbarProps {
   currentRole: Role;
@@ -9,6 +10,7 @@ interface NavbarProps {
   currentUser: UserProfile;
   rider?: RiderProfile;
   onOpenAuthModal?: () => void;
+  onOpenSupabaseModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -17,6 +19,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   rider,
   onOpenAuthModal,
+  onOpenSupabaseModal,
 }) => {
   const { user: authUser, signOut } = useAuth();
 
@@ -93,6 +96,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* User Profile & Auth Status */}
           <div className="flex items-center gap-2">
+            {/* Supabase Database Status / Config Shortcut */}
+            <button
+              onClick={onOpenSupabaseModal}
+              className={`p-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border text-xs font-bold ${
+                isSupabaseConfigured
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+              }`}
+              title={isSupabaseConfigured ? 'Supabase Database Connected: Click to manage/remove/change credentials' : 'Local Storage Mode: Click to connect Supabase database'}
+            >
+              <Database className="w-4 h-4 text-indigo-600" />
+              <span className="hidden md:inline">
+                {isSupabaseConfigured ? 'Supabase' : 'DB'}
+              </span>
+              <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+            </button>
+
             {authUser && authUser.role === 'customer' && currentRole === 'customer' && !currentUser?.isBlocked ? (
               <div className="flex items-center gap-2.5 px-3 py-1.5 bg-indigo-50 border border-indigo-200 rounded-xl text-slate-900 shadow-2xs">
                 <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs shrink-0 overflow-hidden">

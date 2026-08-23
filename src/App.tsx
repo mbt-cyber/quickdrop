@@ -6,6 +6,7 @@ import { CustomerApp } from './components/CustomerApp';
 import { RiderApp } from './components/RiderApp';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AuthModal } from './components/AuthModal';
+import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
 import { supabase, isSupabaseConfigured } from './lib/supabase';
@@ -41,6 +42,7 @@ export default function App() {
   const [authRole, setAuthRole] = useState<Role>(initialRoute.role);
   const [authMode, setAuthMode] = useState<'login'>(initialRoute.mode);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(initialRoute.openLogin);
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   // Helper to handle navigation and sync browser URL
   const handleNavigateTo = (
@@ -777,6 +779,7 @@ export default function App() {
         currentUser={currentUser}
         rider={currentRider}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
       />
 
       {/* Main View Area with Protected Routes for Each Role */}
@@ -863,6 +866,12 @@ export default function App() {
           const roleToNavigate = targetRole || authUser?.role || currentRole;
           handleNavigateTo(`/${roleToNavigate}`, roleToNavigate, false);
         }}
+      />
+
+      {/* Supabase Database Credential & Sync Manager Modal */}
+      <SupabaseConfigModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
       />
     </div>
   );
