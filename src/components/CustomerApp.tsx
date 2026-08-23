@@ -170,6 +170,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
       if (prev && prev.status === 'pending' && curr.status === 'running') {
         setJustAcceptedOrder(curr);
         setRecentlyMovedOrderId(curr.id);
+        setRunningFilter('all'); // Ensure newly accepted order is visible regardless of sub-filter
         try {
           playNewOrderChime();
         } catch (e) {}

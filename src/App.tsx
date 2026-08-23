@@ -10,7 +10,7 @@ import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
 import { supabase, isSupabaseConfigured, syncOrderToSupabase } from './lib/supabase';
-import { initSyncEngine, broadcastSyncEvent } from './lib/syncEngine';
+import { initSyncEngine, broadcastSyncEvent, playNewOrderChime } from './lib/syncEngine';
 
 export default function App() {
   const { user: authUser } = useAuth();
@@ -166,6 +166,18 @@ export default function App() {
       },
       onOrderUpdated: (updatedOrder) => {
         setOrders((prev) => {
+          const prevOrder = prev.find((o) => o.id === updatedOrder.id);
+          const wasPending = prevOrder && prevOrder.status === 'pending';
+          const isNowRunning = updatedOrder.status === 'running';
+
+          if (wasPending && isNowRunning) {
+            // Automatically switch customer feed tab to 'running'
+            setCustomerFeedTab('running');
+            try {
+              playNewOrderChime();
+            } catch (e) {}
+          }
+
           const exists = prev.some((o) => o.id === updatedOrder.id);
           if (exists) {
             return prev.map((o) => (o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
@@ -179,6 +191,19 @@ export default function App() {
       onOrdersBulkSync: (syncedOrders) => {
         if (!syncedOrders || !Array.isArray(syncedOrders)) return;
         setOrders((prev) => {
+          // Detect if any order moved from pending to running
+          for (const synced of syncedOrders) {
+            if (synced && synced.id && synced.status === 'running') {
+              const localPrev = prev.find((p) => p.id === synced.id);
+              if (localPrev && localPrev.status === 'pending') {
+                setCustomerFeedTab('running');
+                try {
+                  playNewOrderChime();
+                } catch (e) {}
+                break;
+              }
+            }
+          }
           const map = new Map<string, Order>();
           syncedOrders.forEach((o) => {
             if (o && o.id) map.set(o.id, o);
@@ -560,6 +585,8 @@ export default function App() {
         return ord;
       })
     );
+    // Automatically trigger Customer feed to switch to Running tab
+    setCustomerFeedTab('running');
   };
 
   // Decline Order Handler (Declines / cancels pending request)
