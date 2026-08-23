@@ -10,6 +10,7 @@ import {
   saveSupabaseCredentials,
   testSupabaseConnection,
   SUPABASE_DATABASE_SETUP_SQL,
+  CUSTOMER_ORDER_BOOKING_SQL,
 } from '../lib/supabase';
 import {
   LayoutDashboard,
@@ -130,7 +131,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     latencyMs?: number;
   } | null>(null);
   const [copiedSqlSchema, setCopiedSqlSchema] = useState(false);
+  const [copiedBookingSql, setCopiedBookingSql] = useState(false);
   const [showSqlEditorAccordion, setShowSqlEditorAccordion] = useState(false);
+  const [selectedSqlTab, setSelectedSqlTab] = useState<'booking' | 'full'>('booking');
 
   const handleSaveSupabaseSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -186,6 +189,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       navigator.clipboard.writeText(SUPABASE_DATABASE_SETUP_SQL);
       setCopiedSqlSchema(true);
       setTimeout(() => setCopiedSqlSchema(false), 2500);
+    }
+  };
+
+  const handleCopyBookingSql = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(CUSTOMER_ORDER_BOOKING_SQL);
+      setCopiedBookingSql(true);
+      setTimeout(() => setCopiedBookingSql(false), 2500);
     }
   };
   const [selectedSupportRiderId, setSelectedSupportRiderId] = useState<string>(riders[0]?.id || '');
@@ -1945,7 +1956,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </form>
 
-          {/* Expandable SQL Schema Setup for New Supabase Projects */}
+          {/* Expandable SQL Schema Setup & Customer Order Booking Queries for Supabase */}
           <div className="border-t border-slate-200 pt-5 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <button
@@ -1954,33 +1965,81 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 className="text-xs font-bold text-slate-700 hover:text-indigo-600 flex items-center gap-2 cursor-pointer"
               >
                 <Code2 className="w-4 h-4 text-indigo-600" />
-                <span>Setting up a fresh Supabase database? Click for 1-Click SQL Setup Script</span>
+                <span>Need Customer Order Booking SQL or full Supabase table setup? Click for 1-Click SQL Scripts</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleCopySqlSchema}
-                className="px-3.5 py-1.5 bg-slate-100 hover:bg-indigo-50 text-indigo-700 border border-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-              >
-                {copiedSqlSchema ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedSqlSchema ? 'Copied SQL Script!' : 'Copy SQL Schema'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyBookingSql}
+                  className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  {copiedBookingSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedBookingSql ? 'Copied Booking SQL!' : 'Copy Customer Booking SQL'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopySqlSchema}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  {copiedSqlSchema ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSqlSchema ? 'Copied Full Setup!' : 'Copy Full DB Setup'}</span>
+                </button>
+              </div>
             </div>
 
             {showSqlEditorAccordion && (
-              <div className="bg-slate-900 text-slate-200 p-4 rounded-2xl text-[11px] font-mono space-y-2 border border-slate-800 shadow-inner">
-                <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800 text-[10px]">
-                  <span>Paste into Supabase &gt; SQL Editor &gt; New Query &gt; Click Run</span>
+              <div className="bg-slate-900 text-slate-200 p-4 sm:p-5 rounded-2xl text-[11px] font-mono space-y-3 border border-slate-800 shadow-inner">
+                {/* Tabs inside SQL Viewer */}
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSqlTab('booking')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        selectedSqlTab === 'booking'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      }`}
+                    >
+                      Customer Order Booking SQL
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSqlTab('full')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        selectedSqlTab === 'full'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      }`}
+                    >
+                      Complete Database Setup SQL
+                    </button>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={handleCopySqlSchema}
-                    className="text-indigo-400 hover:text-indigo-300 font-bold"
+                    onClick={selectedSqlTab === 'booking' ? handleCopyBookingSql : handleCopySqlSchema}
+                    className="text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 text-xs cursor-pointer"
                   >
-                    {copiedSqlSchema ? '✓ Copied' : 'Copy Query'}
+                    <Copy className="w-3 h-3" />
+                    <span>
+                      {selectedSqlTab === 'booking'
+                        ? copiedBookingSql ? '✓ Copied' : 'Copy Booking SQL'
+                        : copiedSqlSchema ? '✓ Copied' : 'Copy Full Schema'}
+                    </span>
                   </button>
                 </div>
-                <pre className="overflow-x-auto max-h-56 text-slate-300 scrollbar-thin">
-                  {SUPABASE_DATABASE_SETUP_SQL}
+
+                <div className="text-[10px] text-slate-400">
+                  {selectedSqlTab === 'booking'
+                    ? 'Includes: customer_orders table, indexes, RLS policies, Realtime, INSERT booking query, SELECT queries, and UPDATE tracking.'
+                    : 'Includes: profiles, customer_orders, orders (JSONB), rider_profiles, wallet_recharges, support_messages, and storage bucket.'}
+                </div>
+
+                <pre className="overflow-x-auto max-h-64 text-slate-300 scrollbar-thin leading-relaxed">
+                  {selectedSqlTab === 'booking' ? CUSTOMER_ORDER_BOOKING_SQL : SUPABASE_DATABASE_SETUP_SQL}
                 </pre>
               </div>
             )}
