@@ -9,7 +9,7 @@ import { AuthModal } from './components/AuthModal';
 import { SupabaseConfigModal } from './components/SupabaseConfigModal';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { useAuth } from './hooks/useAuth';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { supabase, isSupabaseConfigured, syncOrderToSupabase } from './lib/supabase';
 import { initSyncEngine, broadcastSyncEvent } from './lib/syncEngine';
 
 export default function App() {
@@ -146,13 +146,9 @@ export default function App() {
   const syncOrderToCloud = async (order: Order) => {
     if (!isSupabaseConfigured) return;
     try {
-      await supabase.from('orders').upsert([{
-        id: order.id,
-        payload: order,
-        created_at: order.createdAt || new Date().toISOString(),
-      }]);
+      await syncOrderToSupabase(order);
     } catch (e) {
-      console.warn('Failed to sync order to cloud:', e);
+      console.warn('Failed to sync order to Supabase:', e);
     }
   };
 
@@ -236,48 +232,51 @@ export default function App() {
     };
   }, []);
 
-  // Supabase orders sync & Realtime listener fallback
+  // Supabase initial database hydration for wallet recharges and support messages
   useEffect(() => {
-    const fetchCloudOrders = async () => {
-      if (isSupabaseConfigured) {
-        try {
-          const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-          if (!error && data && data.length > 0) {
-            const mappedOrders: Order[] = data.map((d: any) => d.payload as Order).filter(Boolean);
-            if (mappedOrders.length > 0) {
-              setOrders((prev) => {
-                const map = new Map<string, Order>();
-                mappedOrders.forEach((o) => {
-                  if (o && o.id) map.set(o.id, o);
-                });
-                prev.forEach((o) => {
-                  if (o && o.id && !map.has(o.id)) map.set(o.id, o);
-                });
-                return Array.from(map.values()).sort(
-                  (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-                );
-              });
-            }
+    if (!isSupabaseConfigured) return;
+
+    const fetchExtraSupabaseData = async () => {
+      try {
+        // Fetch wallet recharges
+        const { data: recharges } = await supabase
+          .from('wallet_recharges')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (recharges && Array.isArray(recharges)) {
+          const mapped = recharges.map((r: any) => r.payload || r).filter(Boolean);
+          if (mapped.length > 0) {
+            setWalletRechargeRequests((prev) => {
+              const map = new Map();
+              mapped.forEach((m: any) => map.set(m.id, m));
+              prev.forEach((p) => { if (!map.has(p.id)) map.set(p.id, p); });
+              return Array.from(map.values());
+            });
           }
-        } catch (e) {
-          console.warn('Failed to fetch cloud orders:', e);
         }
+
+        // Fetch support messages
+        const { data: messages } = await supabase
+          .from('support_messages')
+          .select('*')
+          .order('created_at', { ascending: true });
+        if (messages && Array.isArray(messages)) {
+          const mapped = messages.map((m: any) => m.payload || m).filter(Boolean);
+          if (mapped.length > 0) {
+            setSupportChatMessages((prev) => {
+              const map = new Map();
+              mapped.forEach((m: any) => map.set(m.id, m));
+              prev.forEach((p) => { if (!map.has(p.id)) map.set(p.id, p); });
+              return Array.from(map.values());
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Supabase extra data hydration caught:', e);
       }
     };
-    fetchCloudOrders();
 
-    if (isSupabaseConfigured) {
-      const channel = supabase
-        .channel('public:orders')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-          fetchCloudOrders();
-        })
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
-    }
+    fetchExtraSupabaseData();
   }, []);
 
   // Cross-browser & cross-tab orders synchronization via localStorage event and polling

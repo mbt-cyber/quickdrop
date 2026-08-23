@@ -248,6 +248,7 @@ CREATE POLICY "Public customer_orders access" ON public.customer_orders
   FOR ALL USING (true) WITH CHECK (true);
 
 -- 4. ENABLE REALTIME SYNC (So Customer & Rider dashboards receive live updates)
+ALTER TABLE public.customer_orders REPLICA IDENTITY FULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.customer_orders;
 
 -- 5. ALSO ENSURE JSONB ORDERS TABLE EXISTS FOR HYBRID CLIENT COMPATIBILITY
@@ -260,6 +261,7 @@ CREATE TABLE IF NOT EXISTS public.orders (
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public orders access" ON public.orders;
 CREATE POLICY "Public orders access" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
 
 -- =========================================================================
@@ -445,10 +447,20 @@ CREATE POLICY "Public wallet recharges access" ON public.wallet_recharges FOR AL
 DROP POLICY IF EXISTS "Public support messages access" ON public.support_messages;
 CREATE POLICY "Public support messages access" ON public.support_messages FOR ALL USING (true) WITH CHECK (true);
 
--- Enable Realtime for orders and support messages
+-- Enable Realtime for orders, support messages, wallet recharges, and profiles
+ALTER TABLE public.customer_orders REPLICA IDENTITY FULL;
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
+ALTER TABLE public.wallet_recharges REPLICA IDENTITY FULL;
+ALTER TABLE public.support_messages REPLICA IDENTITY FULL;
+ALTER TABLE public.rider_profiles REPLICA IDENTITY FULL;
+ALTER TABLE public.profiles REPLICA IDENTITY FULL;
+
 ALTER PUBLICATION supabase_realtime ADD TABLE public.customer_orders;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.wallet_recharges;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.support_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.rider_profiles;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
 
 -- Create Storage Bucket for photos and KYC documents
 INSERT INTO storage.buckets (id, name, public) 
@@ -497,7 +509,7 @@ const safeFetch: typeof fetch = async (input, init) => {
 };
 
 /**
- * Initializes and exports the Supabase client instance safely.
+ * Initializes and exports the Supabase client instance safely with Real-Time WebSockets enabled.
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -506,12 +518,189 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: isSupabaseConfigured,
     storageKey: 'qd_supabase_auth_token',
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 25,
+    },
+  },
   global: {
     fetch: safeFetch,
   },
 });
 
 export const QUICKDROP_STORAGE_BUCKET = 'quickdrop-files';
+
+/**
+ * Transforms a raw row from customer_orders or orders into a clean typed Order object.
+ */
+export function mapSupabaseRowToOrder(row: any): any {
+  if (!row) return null;
+  if (row.payload && typeof row.payload === 'object') {
+    return row.payload;
+  }
+
+  return {
+    id: row.id,
+    orderNumber: row.order_number || `QD-${row.id.substring(row.id.length - 5)}`,
+    customerId: row.customer_id || 'cust_default',
+    customerName: row.customer_name || row.sender_name || 'Customer',
+    customerPhone: row.customer_phone || row.sender_phone || '',
+    pickup: {
+      address: row.pickup_address || '',
+      lat: Number(row.pickup_lat) || 30.7046,
+      lng: Number(row.pickup_lng) || 76.7179,
+      landmark: row.pickup_landmark || '',
+    },
+    destination: {
+      address: row.destination_address || '',
+      lat: Number(row.destination_lat) || 30.7333,
+      lng: Number(row.destination_lng) || 76.7794,
+      landmark: row.destination_landmark || '',
+    },
+    sender: {
+      name: row.sender_name || row.customer_name || 'Sender',
+      phone: row.sender_phone || row.customer_phone || '',
+      notes: row.sender_notes || '',
+    },
+    recipient: {
+      name: row.recipient_name || 'Recipient',
+      phone: row.recipient_phone || '',
+      notes: row.recipient_notes || '',
+    },
+    deliveryType: row.delivery_type || 'small_parcel',
+    scheduleType: row.schedule_type || 'now',
+    bookingDayAndTime: row.booking_day_and_time || '',
+    scheduledDateTime: row.scheduled_date_time || undefined,
+    distanceKm: Number(row.distance_km) || 0,
+    fare: Number(row.fare) || 0,
+    paymentMethod: row.payment_method || 'cash',
+    paymentStatus: row.payment_status || 'pending',
+    otpCode: String(row.otp_code || '1234'),
+    status: row.status || 'pending',
+    trackingStep: row.tracking_step || 'created',
+    riderId: row.rider_id || undefined,
+    riderName: row.rider_name || undefined,
+    riderPhone: row.rider_phone || undefined,
+    cancellationReason: row.cancellation_reason || undefined,
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || new Date().toISOString(),
+  };
+}
+
+/**
+ * Format an Order object for upserting into public.customer_orders.
+ */
+export function formatOrderForCustomerOrdersTable(order: any): any {
+  return {
+    id: order.id,
+    order_number: order.orderNumber,
+    customer_id: order.customerId || 'cust_default',
+    customer_name: order.customerName || order.sender?.name || 'Customer',
+    customer_phone: order.customerPhone || order.sender?.phone || '',
+    pickup_address: order.pickup?.address || '',
+    pickup_lat: order.pickup?.lat || 0,
+    pickup_lng: order.pickup?.lng || 0,
+    pickup_landmark: order.pickup?.landmark || '',
+    destination_address: order.destination?.address || '',
+    destination_lat: order.destination?.lat || 0,
+    destination_lng: order.destination?.lng || 0,
+    destination_landmark: order.destination?.landmark || '',
+    sender_name: order.sender?.name || order.customerName || '',
+    sender_phone: order.sender?.phone || order.customerPhone || '',
+    sender_notes: order.sender?.notes || '',
+    recipient_name: order.recipient?.name || '',
+    recipient_phone: order.recipient?.phone || '',
+    recipient_notes: order.recipient?.notes || '',
+    delivery_type: order.deliveryType || 'small_parcel',
+    schedule_type: order.scheduleType || 'now',
+    booking_day_and_time: order.bookingDayAndTime || '',
+    distance_km: order.distanceKm || 0,
+    fare: order.fare || 0,
+    payment_method: order.paymentMethod || 'cash',
+    payment_status: order.paymentStatus || 'pending',
+    otp_code: String(order.otpCode || '1234'),
+    status: order.status || 'pending',
+    tracking_step: order.trackingStep || 'created',
+    rider_id: order.riderId || null,
+    rider_name: order.riderName || null,
+    rider_phone: order.riderPhone || null,
+    cancellation_reason: order.cancellationReason || null,
+    created_at: order.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Upserts an order to Supabase tables (both customer_orders and orders).
+ */
+export async function syncOrderToSupabase(order: any): Promise<boolean> {
+  if (!isSupabaseConfigured || !order || !order.id) return false;
+  try {
+    const formattedCustomerOrder = formatOrderForCustomerOrdersTable(order);
+    
+    // Parallel upserts to customer_orders & orders
+    await Promise.allSettled([
+      supabase.from('customer_orders').upsert([formattedCustomerOrder]),
+      supabase.from('orders').upsert([{
+        id: order.id,
+        payload: order,
+        created_at: order.createdAt || new Date().toISOString(),
+      }]),
+    ]);
+    return true;
+  } catch (e) {
+    console.warn('syncOrderToSupabase caught error:', e);
+    return false;
+  }
+}
+
+/**
+ * Deletes an order from Supabase tables.
+ */
+export async function deleteOrderFromSupabase(orderId: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !orderId) return false;
+  try {
+    await Promise.allSettled([
+      supabase.from('customer_orders').delete().eq('id', orderId),
+      supabase.from('orders').delete().eq('id', orderId),
+    ]);
+    return true;
+  } catch (e) {
+    console.warn('deleteOrderFromSupabase error:', e);
+    return false;
+  }
+}
+
+/**
+ * Fetches all orders from Supabase (checking customer_orders first, falling back to orders).
+ */
+export async function fetchOrdersFromSupabase(): Promise<any[]> {
+  if (!isSupabaseConfigured) return [];
+  try {
+    // 1. Try fetching from customer_orders
+    const { data: customerOrders, error: coError } = await supabase
+      .from('customer_orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!coError && Array.isArray(customerOrders) && customerOrders.length > 0) {
+      return customerOrders.map(mapSupabaseRowToOrder).filter(Boolean);
+    }
+
+    // 2. Fallback to orders JSONB table
+    const { data: jsonbOrders, error: jError } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!jError && Array.isArray(jsonbOrders) && jsonbOrders.length > 0) {
+      return jsonbOrders.map(mapSupabaseRowToOrder).filter(Boolean);
+    }
+  } catch (e) {
+    console.warn('fetchOrdersFromSupabase exception:', e);
+  }
+  return [];
+}
 
 /**
  * Ensures the 'quickdrop-files' storage bucket exists in Supabase.

@@ -1,5 +1,12 @@
 import { Order, RiderProfile, SupportChatMessage, WalletRechargeRequest } from '../types';
-import { supabase, isSupabaseConfigured } from './supabase';
+import {
+  supabase,
+  isSupabaseConfigured,
+  syncOrderToSupabase,
+  deleteOrderFromSupabase,
+  fetchOrdersFromSupabase,
+  mapSupabaseRowToOrder,
+} from './supabase';
 
 const SYNC_TOPIC = 'quickdrop_orders_sync_v5';
 const NTFY_SYNC_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
@@ -56,6 +63,9 @@ try {
   console.warn('BroadcastChannel not supported:', e);
 }
 
+// Global active Supabase Realtime Channel
+let activeSupabaseChannel: any = null;
+
 // Memory cache of processed message IDs to avoid duplicate processing loops
 const processedMessageIds = new Set<string>();
 
@@ -78,7 +88,20 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
     console.warn('Local broadcast error:', e);
   }
 
-  // 2. Direct server API dispatch (Instant SSE broadcast to all connected mobile phones)
+  // 2. Direct Supabase Real-Time Broadcast (Ultra-low latency WebSocket push to all devices)
+  if (isSupabaseConfigured && activeSupabaseChannel) {
+    try {
+      activeSupabaseChannel.send({
+        type: 'broadcast',
+        event: 'sync_event',
+        payload: fullEvent,
+      });
+    } catch (e) {
+      console.warn('Supabase Realtime broadcast send error:', e);
+    }
+  }
+
+  // 3. Direct server API dispatch (Instant SSE broadcast to all connected mobile phones)
   try {
     if (fullEvent.type === 'ORDER_CREATED' && fullEvent.order) {
       fetch('/api/orders', {
@@ -119,7 +142,7 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
     console.warn('Internal server event dispatch error:', e);
   }
 
-  // 3. Global ntfy HTTP relay fallback for cross-network & multi-device sync
+  // 4. Global ntfy HTTP relay fallback for cross-network & multi-device sync
   try {
     fetch(`https://ntfy.sh/${SYNC_TOPIC}`, {
       method: 'POST',
@@ -130,55 +153,39 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
     }).catch(() => {});
   } catch (err) {}
 
-  // 4. Parallel write to Supabase if configured
-  if (isSupabaseConfigured && fullEvent.order) {
+  // 5. Parallel write to Supabase Database Tables if configured
+  if (isSupabaseConfigured) {
     try {
-      // Upsert into hybrid JSONB orders table
-      supabase.from('orders').upsert([{
-        id: fullEvent.order.id,
-        payload: fullEvent.order,
-        created_at: fullEvent.order.createdAt || new Date().toISOString(),
-      }]).then(() => {});
+      if (fullEvent.order) {
+        syncOrderToSupabase(fullEvent.order);
+      } else if (fullEvent.orderId && fullEvent.type === 'ORDER_DELETED') {
+        deleteOrderFromSupabase(fullEvent.orderId);
+      }
 
-      // Also upsert into customer_orders table if relational schema is active
-      const ord = fullEvent.order;
-      supabase.from('customer_orders').upsert([{
-        id: ord.id,
-        order_number: ord.orderNumber,
-        customer_id: ord.customerId || 'cust_default',
-        customer_name: ord.customerName || ord.sender?.name,
-        customer_phone: ord.customerPhone || ord.sender?.phone,
-        pickup_address: ord.pickup?.address,
-        pickup_lat: ord.pickup?.lat,
-        pickup_lng: ord.pickup?.lng,
-        pickup_landmark: ord.pickup?.landmark,
-        destination_address: ord.destination?.address,
-        destination_lat: ord.destination?.lat,
-        destination_lng: ord.destination?.lng,
-        destination_landmark: ord.destination?.landmark,
-        sender_name: ord.sender?.name,
-        sender_phone: ord.sender?.phone,
-        sender_notes: ord.sender?.notes,
-        recipient_name: ord.recipient?.name,
-        recipient_phone: ord.recipient?.phone,
-        recipient_notes: ord.recipient?.notes,
-        delivery_type: ord.deliveryType,
-        schedule_type: ord.scheduleType,
-        booking_day_and_time: ord.bookingDayAndTime,
-        distance_km: ord.distanceKm,
-        fare: ord.fare,
-        payment_method: ord.paymentMethod,
-        payment_status: ord.paymentStatus,
-        otp_code: ord.otpCode,
-        status: ord.status,
-        tracking_step: ord.trackingStep,
-        rider_id: ord.riderId,
-        rider_name: ord.riderName,
-        rider_phone: ord.riderPhone,
-        created_at: ord.createdAt || new Date().toISOString(),
-      }]).then(() => {});
+      if (fullEvent.type === 'WALLET_RECHARGE_REQUEST' && fullEvent.rechargeRequest) {
+        supabase.from('wallet_recharges').upsert([{
+          id: fullEvent.rechargeRequest.id,
+          payload: fullEvent.rechargeRequest,
+          created_at: fullEvent.rechargeRequest.createdAt || new Date().toISOString(),
+        }]).then(() => {});
+      }
+
+      if (fullEvent.type === 'WALLET_RECHARGE_STATUS' && fullEvent.requestId) {
+        supabase.from('wallet_recharges').update({
+          status: fullEvent.rechargeStatus,
+          updated_at: new Date().toISOString(),
+        }).eq('id', fullEvent.requestId).then(() => {});
+      }
+
+      if (fullEvent.type === 'SUPPORT_MESSAGE' && fullEvent.supportMessage) {
+        supabase.from('support_messages').upsert([{
+          id: fullEvent.supportMessage.id,
+          payload: fullEvent.supportMessage,
+          created_at: new Date().toISOString(),
+        }]).then(() => {});
+      }
     } catch (e) {
-      console.warn('Supabase order upsert error:', e);
+      console.warn('Supabase realtime table write caught:', e);
     }
   }
 }
@@ -300,7 +307,81 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   };
   localChannel?.addEventListener('message', handleLocalMessage);
 
-  // 2. Direct Server-Sent Events (SSE) Stream to our app's own server
+  // 2. Direct Supabase Real-Time Channel (Postgres changes & WebSocket Broadcast)
+  const setupSupabaseRealtime = () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const channel = supabase.channel('quickdrop_realtime_sync_channel', {
+        config: {
+          broadcast: { self: false },
+        },
+      });
+
+      channel
+        // A. Listen for Supabase WebSocket Broadcasts
+        .on('broadcast', { event: 'sync_event' }, ({ payload }) => {
+          if (payload) {
+            handleIncomingEvent(payload as SyncEvent);
+          }
+        })
+        // B. Listen for PostgreSQL Changes on customer_orders table
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_orders' }, (payload) => {
+          try {
+            if (payload.eventType === 'INSERT' && payload.new) {
+              const order = mapSupabaseRowToOrder(payload.new);
+              if (order) handleIncomingEvent({ type: 'ORDER_CREATED', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), order });
+            } else if (payload.eventType === 'UPDATE' && payload.new) {
+              const order = mapSupabaseRowToOrder(payload.new);
+              if (order) handleIncomingEvent({ type: 'ORDER_UPDATED', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), order });
+            } else if (payload.eventType === 'DELETE' && payload.old) {
+              const orderId = payload.old.id;
+              if (orderId) handleIncomingEvent({ type: 'ORDER_DELETED', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), orderId });
+            }
+          } catch (e) {}
+        })
+        // C. Listen for PostgreSQL Changes on orders JSONB table
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+          try {
+            if (payload.eventType === 'INSERT' && payload.new?.payload) {
+              handleIncomingEvent({ type: 'ORDER_CREATED', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), order: payload.new.payload });
+            } else if (payload.eventType === 'UPDATE' && payload.new?.payload) {
+              handleIncomingEvent({ type: 'ORDER_UPDATED', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), order: payload.new.payload });
+            } else if (payload.eventType === 'DELETE' && payload.old?.id) {
+              handleIncomingEvent({ type: 'ORDER_DELETED', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), orderId: payload.old.id });
+            }
+          } catch (e) {}
+        })
+        // D. Listen for PostgreSQL Changes on wallet_recharges table
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_recharges' }, (payload) => {
+          try {
+            if (payload.eventType === 'INSERT' && payload.new?.payload) {
+              handleIncomingEvent({ type: 'WALLET_RECHARGE_REQUEST', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), rechargeRequest: payload.new.payload });
+            }
+          } catch (e) {}
+        })
+        // E. Listen for PostgreSQL Changes on support_messages table
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'support_messages' }, (payload) => {
+          try {
+            if (payload.eventType === 'INSERT' && payload.new?.payload) {
+              handleIncomingEvent({ type: 'SUPPORT_MESSAGE', senderDeviceId: 'supabase_db', timestamp: new Date().toISOString(), supportMessage: payload.new.payload });
+            }
+          } catch (e) {}
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Supabase Real-Time stream active & listening');
+          }
+        });
+
+      activeSupabaseChannel = channel;
+    } catch (e) {
+      console.warn('Supabase Real-Time initialization caught:', e);
+    }
+  };
+
+  setupSupabaseRealtime();
+
+  // 3. Direct Server-Sent Events (SSE) Stream to our app's own server
   const connectServerSSE = () => {
     try {
       if (typeof window !== 'undefined' && 'EventSource' in window) {
@@ -335,7 +416,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
 
   connectServerSSE();
 
-  // 3. ntfy SSE connection for cross-network redundancy
+  // 4. ntfy SSE connection for cross-network redundancy
   const connectNtfySSE = () => {
     try {
       if (typeof window !== 'undefined' && 'EventSource' in window) {
@@ -366,7 +447,23 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
 
   connectNtfySSE();
 
-  // 4. Historical mesh order fetch (Ensures any order placed while app was closed or on another phone is synced)
+  // 5. Initial Supabase Database Hydration (Loads all real-time orders directly from Supabase on start)
+  const hydrateFromSupabase = async () => {
+    if (isSupabaseConfigured && callbacks.onOrdersBulkSync) {
+      try {
+        const cloudOrders = await fetchOrdersFromSupabase();
+        if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+          callbacks.onOrdersBulkSync(cloudOrders);
+        }
+      } catch (e) {
+        console.warn('Initial Supabase hydration error:', e);
+      }
+    }
+  };
+
+  hydrateFromSupabase();
+
+  // 6. Historical mesh order fetch
   const fetchHistoricalMeshOrders = async () => {
     try {
       const res = await fetch(`https://ntfy.sh/${SYNC_TOPIC}/json?poll=1&since=24h`);
@@ -391,7 +488,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   // Perform initial fetch on boot
   fetchHistoricalMeshOrders();
 
-  // 5. Fast polling fallback (Fetches /api/orders every 1.5s to guarantee cross-phone sync without hitting external rate limits)
+  // 7. Fast polling fallback (Fetches /api/orders every 1.5s to guarantee cross-phone sync)
   const pollServerOrders = async () => {
     try {
       const res = await fetch('/api/orders', { cache: 'no-store' });
@@ -410,6 +507,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   const handleManualSync = () => {
     pollServerOrders();
     fetchHistoricalMeshOrders();
+    hydrateFromSupabase();
   };
   window.addEventListener('quickdrop_manual_sync', handleManualSync);
 
@@ -418,6 +516,7 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
     if (document.visibilityState === 'visible') {
       pollServerOrders();
       fetchHistoricalMeshOrders();
+      hydrateFromSupabase();
     }
   };
   document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -441,6 +540,10 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
     if (ntfySSE) {
       ntfySSE.close();
       ntfySSE = null;
+    }
+    if (activeSupabaseChannel) {
+      supabase.removeChannel(activeSupabaseChannel);
+      activeSupabaseChannel = null;
     }
     localChannel?.removeEventListener('message', handleLocalMessage);
   };
