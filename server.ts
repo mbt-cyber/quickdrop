@@ -15,6 +15,27 @@ const ridersStore = new Map<string, any>();
 const rechargeRequestsStore = new Map<string, any>();
 const supportMessagesStore = new Map<string, any>();
 
+const SYNC_TOPIC = 'quickdrop_orders_sync_v5';
+const NTFY_URL = `https://ntfy.sh/${SYNC_TOPIC}`;
+
+// Forward server events to global ntfy mesh so multi-container deployments stay in 100% sync
+async function publishToGlobalMesh(event: any) {
+  try {
+    const rawPayload = JSON.stringify(event);
+    await fetch('https://ntfy.sh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic: SYNC_TOPIC,
+        message: rawPayload,
+        title: `QD:${event.type || 'SYNC'}`,
+      }),
+    });
+  } catch (e) {
+    // Network or offline fallback
+  }
+}
+
 // Connected Server-Sent Events (SSE) clients for real-time pushing
 type SSEClient = {
   id: string;
@@ -32,6 +53,35 @@ function broadcastSSE(eventType: string, data: any) {
     }
   });
 }
+
+// Global ntfy listener on server to sync events across different Cloud Run containers
+function initServerGlobalMeshListener() {
+  try {
+    // Poll recent events on boot
+    fetch(`https://ntfy.sh/${SYNC_TOPIC}/json?poll=1&since=6h`)
+      .then((res) => res.text())
+      .then((text) => {
+        const lines = text.trim().split('\n');
+        for (const line of lines) {
+          if (!line) continue;
+          try {
+            const envelope = JSON.parse(line);
+            if (envelope.message) {
+              const event = JSON.parse(envelope.message);
+              if (event.order && (event.type === 'ORDER_CREATED' || event.type === 'ORDER_UPDATED')) {
+                ordersStore.set(event.order.id, event.order);
+              } else if (event.orderId && event.type === 'ORDER_DELETED') {
+                ordersStore.delete(event.orderId);
+              }
+            }
+          } catch (e) {}
+        }
+      })
+      .catch(() => {});
+  } catch (e) {}
+}
+
+initServerGlobalMeshListener();
 
 async function startServer() {
   const app = express();
@@ -131,11 +181,14 @@ async function startServer() {
     ordersStore.set(order.id, orderData);
 
     // Broadcast in real-time to all connected rider mobile phones and admin dashboards!
-    broadcastSSE('ORDER_CREATED', {
+    const createEvent = {
+      type: 'ORDER_CREATED',
       order: orderData,
       senderDeviceId: req.headers['x-device-id'] || 'server',
       timestamp: new Date().toISOString(),
-    });
+    };
+    broadcastSSE('ORDER_CREATED', createEvent);
+    publishToGlobalMesh(createEvent);
 
     res.status(201).json({ success: true, order: orderData });
   });
@@ -156,12 +209,15 @@ async function startServer() {
     ordersStore.set(orderId, updatedOrder);
 
     // Broadcast in real-time to all connected mobile phones!
-    broadcastSSE('ORDER_UPDATED', {
+    const updateEvent = {
+      type: 'ORDER_UPDATED',
       order: updatedOrder,
       orderId,
       senderDeviceId: req.headers['x-device-id'] || 'server',
       timestamp: new Date().toISOString(),
-    });
+    };
+    broadcastSSE('ORDER_UPDATED', updateEvent);
+    publishToGlobalMesh(updateEvent);
 
     res.json({ success: true, order: updatedOrder });
   });
@@ -171,11 +227,14 @@ async function startServer() {
     const orderId = req.params.id;
     ordersStore.delete(orderId);
 
-    broadcastSSE('ORDER_DELETED', {
+    const deleteEvent = {
+      type: 'ORDER_DELETED',
       orderId,
       senderDeviceId: req.headers['x-device-id'] || 'server',
       timestamp: new Date().toISOString(),
-    });
+    };
+    broadcastSSE('ORDER_DELETED', deleteEvent);
+    publishToGlobalMesh(deleteEvent);
 
     res.json({ success: true, orderId });
   });

@@ -119,15 +119,18 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
     console.warn('Internal server event dispatch error:', e);
   }
 
-  // 3. Global ntfy HTTP relay fallback for networks without direct SSE
+  // 3. Global ntfy HTTP relay fallback for cross-network & multi-device sync
   try {
-    fetch(NTFY_SYNC_URL, {
+    fetch('https://ntfy.sh', {
       method: 'POST',
-      body: payloadString,
       headers: {
         'Content-Type': 'application/json',
-        'Title': `QuickDrop:${fullEvent.type}`,
       },
+      body: JSON.stringify({
+        topic: SYNC_TOPIC,
+        message: payloadString,
+        title: `QD:${fullEvent.type}`,
+      }),
     }).catch(() => {});
   } catch (err) {}
 
@@ -366,7 +369,30 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
 
   connectNtfySSE();
 
-  // 4. Fast polling fallback (Fetches /api/orders every 1.5s to ensure zero missed orders on mobile backgrounding)
+  // 4. Historical mesh order fetch (Ensures any order placed while app was closed or on another phone is synced)
+  const fetchHistoricalMeshOrders = async () => {
+    try {
+      const res = await fetch(`https://ntfy.sh/${SYNC_TOPIC}/json?poll=1&since=24h`);
+      if (res.ok) {
+        const text = await res.text();
+        const lines = text.trim().split('\n');
+        for (const line of lines) {
+          if (!line) continue;
+          try {
+            const envelope = JSON.parse(line);
+            if (envelope.message) {
+              const event: SyncEvent = JSON.parse(envelope.message);
+              handleIncomingEvent(event, true);
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  };
+
+  fetchHistoricalMeshOrders();
+
+  // 5. Fast polling fallback (Fetches /api/orders every 1.5s & mesh every 3s to guarantee cross-phone sync)
   const pollServerOrders = async () => {
     try {
       const res = await fetch('/api/orders', { cache: 'no-store' });
@@ -382,15 +408,23 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
   // Immediate sync fetch
   pollServerOrders();
 
+  const handleManualSync = () => {
+    pollServerOrders();
+    fetchHistoricalMeshOrders();
+  };
+  window.addEventListener('quickdrop_manual_sync', handleManualSync);
+
   pollTimer = setInterval(() => {
     if (isSubscribed) {
       pollServerOrders();
+      fetchHistoricalMeshOrders();
     }
-  }, 1500);
+  }, 2000);
 
   // Cleanup handler
   return () => {
     isSubscribed = false;
+    window.removeEventListener('quickdrop_manual_sync', handleManualSync);
     if (pollTimer) clearInterval(pollTimer);
     if (serverSSE) {
       serverSSE.close();

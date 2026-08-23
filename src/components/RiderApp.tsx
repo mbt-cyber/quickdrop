@@ -602,6 +602,26 @@ export const RiderApp: React.FC<RiderAppProps> = ({
                   Orders placed on customer mobile phones appear here instantly in real-time.
                 </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  fetch('/api/orders', { cache: 'no-store' })
+                    .then((r) => r.json())
+                    .then((j) => {
+                      if (j.success && Array.isArray(j.orders)) {
+                        // Triggers bulk sync refresh
+                        window.dispatchEvent(new CustomEvent('quickdrop_manual_sync'));
+                      }
+                    })
+                    .catch(() => {});
+                }}
+                className="px-3 py-1.5 bg-amber-200 hover:bg-amber-300 text-amber-900 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer active:scale-95"
+                title="Tap to force sync with server"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Sync Now</span>
+              </button>
             </div>
 
             {/* KYC Document Verification Block Alert Banner */}
