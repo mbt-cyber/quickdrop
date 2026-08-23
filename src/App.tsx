@@ -196,6 +196,11 @@ export default function App() {
           prev.map((r) => (r.id === riderId ? { ...r, isOnline } : r))
         );
       },
+      onRiderLocationUpdated: (riderId, lat, lng) => {
+        setRiders((prev) =>
+          prev.map((r) => (r.id === riderId ? { ...r, currentLat: lat, currentLng: lng } : r))
+        );
+      },
       onRiderKycUpdated: (riderId, status, remarks) => {
         setRiders((prev) =>
           prev.map((r) => (r.id === riderId ? { ...r, kycStatus: status, kycRemarks: remarks || r.kycRemarks } : r))

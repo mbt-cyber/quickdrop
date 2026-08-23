@@ -3,6 +3,7 @@ import { Order, RiderProfile, WalletRechargeRequest, SupportChatMessage } from '
 import { formatCurrency } from '../utils/geoUtils';
 import { calculateRiderEarningsSummary, DayEarningsSummary, CompletedRideRecord } from '../utils/earningsUtils';
 import { uploadQuickDropFile } from '../lib/supabase';
+import { broadcastSyncEvent } from '../lib/syncEngine';
 import { useAuth } from '../hooks/useAuth';
 import {
   Bike,
@@ -217,6 +218,53 @@ export const RiderApp: React.FC<RiderAppProps> = ({
       onToggleOnline(nextState);
     }
   };
+
+  // Real-time Delivery Partner Live GPS Tracking & Backend Server Synchronization
+  useEffect(() => {
+    if (!isOnline || !rider?.id) return;
+
+    // Send immediate initial position to backend server
+    broadcastSyncEvent({
+      type: 'RIDER_LOCATION_UPDATED',
+      riderId: rider.id,
+      lat: rider.currentLat || 19.076,
+      lng: rider.currentLng || 72.8777,
+      heading: 0,
+      speed: 0,
+    });
+
+    let watchId: number | null = null;
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      try {
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude, heading, speed } = pos.coords;
+            broadcastSyncEvent({
+              type: 'RIDER_LOCATION_UPDATED',
+              riderId: rider.id,
+              lat: latitude,
+              lng: longitude,
+              heading: heading || 0,
+              speed: speed || 0,
+            });
+            if (onUpdateRiderProfile) {
+              onUpdateRiderProfile({ currentLat: latitude, currentLng: longitude });
+            }
+          },
+          () => {
+            // Geolocation error or permission denied
+          },
+          { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+        );
+      } catch (e) {}
+    }
+
+    return () => {
+      if (watchId !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [isOnline, rider?.id]);
   const [otpInput, setOtpInput] = useState<Record<string, string>>({});
   const [otpError, setOtpError] = useState<Record<string, string>>({});
 

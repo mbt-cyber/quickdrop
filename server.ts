@@ -241,6 +241,155 @@ async function startServer() {
     res.json({ success: true, orderId });
   });
 
+  // ==========================================
+  // RIDERS & LIVE LOCATION API
+  // ==========================================
+  app.get('/api/riders', (req, res) => {
+    const list = Array.from(ridersStore.values());
+    res.json({ success: true, riders: list });
+  });
+
+  // Rider updates profile / registration
+  app.post('/api/riders', (req, res) => {
+    const rider = req.body;
+    if (!rider || !rider.id) {
+      return res.status(400).json({ error: 'Rider payload with valid ID is required' });
+    }
+    const existing = ridersStore.get(rider.id) || {};
+    const updated = { ...existing, ...rider, updatedAt: new Date().toISOString() };
+    ridersStore.set(rider.id, updated);
+
+    const event = {
+      type: 'RIDER_STATUS_UPDATED',
+      riderId: rider.id,
+      isOnline: rider.isOnline ?? true,
+      rider: updated,
+      senderDeviceId: req.headers['x-device-id'] || 'server',
+      timestamp: new Date().toISOString(),
+    };
+    broadcastSSE('RIDER_STATUS_UPDATED', event);
+    publishToGlobalMesh(event);
+
+    res.json({ success: true, rider: updated });
+  });
+
+  // Rider live GPS location update (broadcasts directly to passenger tracking screen)
+  app.post('/api/riders/location', (req, res) => {
+    const { riderId, lat, lng, heading, speed, orderId } = req.body;
+    if (!riderId || lat === undefined || lng === undefined) {
+      return res.status(400).json({ error: 'riderId, lat, and lng are required' });
+    }
+
+    const existingRider = ridersStore.get(riderId) || { id: riderId };
+    const updatedRider = {
+      ...existingRider,
+      currentLat: lat,
+      currentLng: lng,
+      heading: heading || 0,
+      speed: speed || 0,
+      lastLocationUpdate: new Date().toISOString(),
+    };
+    ridersStore.set(riderId, updatedRider);
+
+    const locationEvent = {
+      type: 'RIDER_LOCATION_UPDATED',
+      riderId,
+      lat,
+      lng,
+      heading: heading || 0,
+      speed: speed || 0,
+      orderId,
+      senderDeviceId: req.headers['x-device-id'] || 'server',
+      timestamp: new Date().toISOString(),
+    };
+
+    broadcastSSE('RIDER_LOCATION_UPDATED', locationEvent);
+    publishToGlobalMesh(locationEvent);
+
+    res.json({ success: true, location: { lat, lng, heading, speed } });
+  });
+
+  // Direct Order In-App Chat Endpoint
+  app.post('/api/orders/:id/chat', (req, res) => {
+    const orderId = req.params.id;
+    const { sender, text } = req.body;
+    if (!text || !sender) {
+      return res.status(400).json({ error: 'text and sender (customer|rider) are required' });
+    }
+
+    const existing = ordersStore.get(orderId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const newMsg = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      sender,
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const chatMessages = [...(existing.customerChatMessages || []), newMsg];
+    const updatedOrder = {
+      ...existing,
+      customerChatMessages: chatMessages,
+      updatedAt: new Date().toISOString(),
+    };
+
+    ordersStore.set(orderId, updatedOrder);
+
+    const updateEvent = {
+      type: 'ORDER_UPDATED',
+      order: updatedOrder,
+      orderId,
+      chatMessage: newMsg,
+      senderDeviceId: req.headers['x-device-id'] || 'server',
+      timestamp: new Date().toISOString(),
+    };
+    broadcastSSE('ORDER_UPDATED', updateEvent);
+    publishToGlobalMesh(updateEvent);
+
+    res.json({ success: true, message: newMsg, order: updatedOrder });
+  });
+
+  // Verify OTP for delivery completion
+  app.post('/api/orders/:id/verify-otp', (req, res) => {
+    const orderId = req.params.id;
+    const { otpCode, riderId } = req.body;
+
+    const existing = ordersStore.get(orderId);
+    if (!existing) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (String(existing.otpCode).trim() !== String(otpCode).trim()) {
+      return res.status(400).json({ success: false, error: 'Invalid OTP code' });
+    }
+
+    const updatedOrder = {
+      ...existing,
+      status: 'finished',
+      trackingStep: 'delivered',
+      paymentStatus: 'completed',
+      deliveredAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    ordersStore.set(orderId, updatedOrder);
+
+    const updateEvent = {
+      type: 'ORDER_UPDATED',
+      order: updatedOrder,
+      orderId,
+      senderDeviceId: req.headers['x-device-id'] || 'server',
+      timestamp: new Date().toISOString(),
+    };
+    broadcastSSE('ORDER_UPDATED', updateEvent);
+    publishToGlobalMesh(updateEvent);
+
+    res.json({ success: true, order: updatedOrder });
+  });
+
   // Generic real-time event dispatcher (for rider online status, KYC, wallet, support chat)
   app.post('/api/sync/event', (req, res) => {
     const event = req.body;
@@ -257,10 +406,13 @@ async function startServer() {
       rechargeRequestsStore.set(event.rechargeRequest.id, event.rechargeRequest);
     } else if (event.supportMessage) {
       supportMessagesStore.set(event.supportMessage.id, event.supportMessage);
+    } else if (event.rider) {
+      ridersStore.set(event.rider.id, event.rider);
     }
 
     // Broadcast to all other phones immediately
     broadcastSSE(event.type, event);
+    publishToGlobalMesh(event);
 
     res.json({ success: true });
   });

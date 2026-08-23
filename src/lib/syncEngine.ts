@@ -17,6 +17,7 @@ export type SyncEventType =
   | 'ORDER_UPDATED'
   | 'ORDER_DELETED'
   | 'RIDER_STATUS_UPDATED'
+  | 'RIDER_LOCATION_UPDATED'
   | 'RIDER_KYC_UPDATED'
   | 'WALLET_RECHARGE_REQUEST'
   | 'WALLET_RECHARGE_STATUS'
@@ -31,6 +32,11 @@ export interface SyncEvent {
   orderId?: string;
   orders?: Order[];
   riderId?: string;
+  rider?: RiderProfile;
+  lat?: number;
+  lng?: number;
+  heading?: number;
+  speed?: number;
   isOnline?: boolean;
   kycStatus?: 'approved' | 'pending' | 'rejected';
   kycRemarks?: string;
@@ -47,6 +53,7 @@ export interface SyncCallbacks {
   onOrderDeleted?: (orderId: string) => void;
   onOrdersBulkSync?: (orders: Order[]) => void;
   onRiderStatusUpdated?: (riderId: string, isOnline: boolean) => void;
+  onRiderLocationUpdated?: (riderId: string, lat: number, lng: number, heading?: number, speed?: number, orderId?: string) => void;
   onRiderKycUpdated?: (riderId: string, status: 'approved' | 'pending' | 'rejected', remarks?: string) => void;
   onWalletRechargeRequest?: (req: WalletRechargeRequest) => void;
   onWalletRechargeStatus?: (requestId: string, status: 'approved' | 'rejected', amount?: number, riderId?: string) => void;
@@ -127,6 +134,22 @@ export async function broadcastSyncEvent(partialEvent: Omit<SyncEvent, 'senderDe
         headers: {
           'x-device-id': DEVICE_ID,
         },
+      }).catch(() => {});
+    } else if (fullEvent.type === 'RIDER_LOCATION_UPDATED' && fullEvent.riderId && fullEvent.lat !== undefined && fullEvent.lng !== undefined) {
+      fetch('/api/riders/location', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-device-id': DEVICE_ID,
+        },
+        body: JSON.stringify({
+          riderId: fullEvent.riderId,
+          lat: fullEvent.lat,
+          lng: fullEvent.lng,
+          heading: fullEvent.heading || 0,
+          speed: fullEvent.speed || 0,
+          orderId: fullEvent.orderId,
+        }),
       }).catch(() => {});
     } else {
       fetch('/api/sync/event', {
@@ -270,6 +293,12 @@ export function initSyncEngine(callbacks: SyncCallbacks): () => void {
       case 'RIDER_STATUS_UPDATED':
         if (event.riderId && event.isOnline !== undefined && callbacks.onRiderStatusUpdated) {
           callbacks.onRiderStatusUpdated(event.riderId, event.isOnline);
+        }
+        break;
+
+      case 'RIDER_LOCATION_UPDATED':
+        if (event.riderId && event.lat !== undefined && event.lng !== undefined && callbacks.onRiderLocationUpdated) {
+          callbacks.onRiderLocationUpdated(event.riderId, event.lat, event.lng, event.heading, event.speed, event.orderId);
         }
         break;
 
