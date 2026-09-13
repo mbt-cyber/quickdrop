@@ -42,6 +42,10 @@ import {
   ShieldAlert,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2,
   Sparkles,
   ExternalLink,
   Search,
@@ -241,6 +245,27 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   const [isBooking, setIsBooking] = useState(false);
   const [bookingSuccessOrder, setBookingSuccessOrder] = useState<Order | null>(null);
   const [runningFilter, setRunningFilter] = useState<'all' | 'arrived_starting' | 'in_transit' | 'arrived_drop'>('all');
+  
+  // Center Booking Form Drawer State: 'half' (top half page), 'collapsed' (bottom of main page), 'full'
+  const [sheetState, setSheetState] = useState<'collapsed' | 'half' | 'full'>('half');
+  const touchStartY = useRef<number>(0);
+
+  const handleSheetTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleSheetTouchEnd = (e: React.TouchEvent) => {
+    const diff = e.changedTouches[0].clientY - touchStartY.current;
+    if (diff > 45) {
+      // Swiped down
+      if (sheetState === 'full') setSheetState('half');
+      else if (sheetState === 'half') setSheetState('collapsed');
+    } else if (diff < -45) {
+      // Swiped up
+      if (sheetState === 'collapsed') setSheetState('half');
+      else if (sheetState === 'half') setSheetState('full');
+    }
+  };
 
   const navScrollRef = useRef<HTMLDivElement>(null);
 
@@ -568,517 +593,642 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
             TAB 1: BOOK ORDER FORM
         ======================================================== */}
         {activeTab === 'book' && (
-          <div className="space-y-6">
-            {/* SECTION 1: PICKUP & DROPOFF LOCATION & LIVE MAP */}
-            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                <div>
-                  <h2 className="text-lg font-bold font-heading text-slate-900 flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-indigo-600" />
-                    <span>1. Pickup & Dropoff Location</span>
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Write exact pickup and drop addresses for instant distance & fare calculation
-                  </p>
-                </div>
+          <div className="relative w-full h-[calc(100vh-10.5rem)] min-h-[600px] sm:min-h-[640px] rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm bg-slate-100 flex flex-col">
+            {/* BACKGROUND: INTERACTIVE TRICITY LIVE MAP */}
+            <MapPicker
+              pickup={pickup}
+              destination={destination}
+              onSelectPickup={(loc) => {
+                setPickup(loc);
+                if (sheetState === 'collapsed') setSheetState('half');
+              }}
+              onSelectDestination={(loc) => {
+                setDestination(loc);
+                if (sheetState === 'collapsed') setSheetState('half');
+              }}
+              activeMode={mapActiveMode}
+              setActiveMode={setMapActiveMode}
+              className="w-full h-full"
+            />
 
-              </div>
+            {/* FLOATING ACTION PILL ON MAP (WHEN COLLAPSED) */}
+            {sheetState === 'collapsed' && (
+              <button
+                type="button"
+                onClick={() => setSheetState('half')}
+                className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-full shadow-2xl flex items-center gap-2 border-2 border-white transition-all transform hover:scale-105 active:scale-95 cursor-pointer animate-bounce"
+              >
+                <Package className="w-4 h-4" />
+                <span>Open Booking Form &uarr;</span>
+              </button>
+            )}
 
-
-
-              {/* PICKUP & DROPOFF ADDRESS INPUT FIELDS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {/* Pickup Address */}
-                <div className="p-4 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                      <span>Pickup Address</span>
-                    </label>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                      Step 1
-                    </span>
-                  </div>
-
-                  {/* Search Pickup Address Bar */}
-                  <div className="space-y-1.5 relative">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
-                        <Search className="w-3 h-3 text-emerald-600" />
-                        <span>Search Pickup Landmark / Area</span>
-                      </span>
-                    </div>
-                    <div className="relative flex items-center">
-                      <input
-                        type="text"
-                        value={pickupSearchQuery}
-                        onChange={(e) => setPickupSearchQuery(e.target.value)}
-                        placeholder="Type landmark or area (e.g. VIP Road, Sector 17)..."
-                        className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
-                      />
-                      <Search className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5" />
-                    </div>
-                    {pickupSearchQuery.trim().length > 0 && (
-                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-emerald-200 rounded-xl shadow-lg max-h-44 overflow-y-auto divide-y divide-slate-100">
-                        {TRICITY_POPULAR_PRESETS.filter(p => 
-                          p.name.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
-                          p.address.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
-                          p.city.toLowerCase().includes(pickupSearchQuery.toLowerCase())
-                        ).length > 0 ? (
-                          TRICITY_POPULAR_PRESETS.filter(p => 
-                            p.name.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
-                            p.address.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
-                            p.city.toLowerCase().includes(pickupSearchQuery.toLowerCase())
-                          ).map((preset) => (
-                            <button
-                              key={preset.name}
-                              type="button"
-                              onClick={() => {
-                                setPickup({ address: preset.address, lat: preset.lat, lng: preset.lng });
-                                setPickupSearchQuery('');
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-emerald-50 transition-colors flex flex-col cursor-pointer"
-                            >
-                              <span className="text-xs font-bold text-slate-900">{preset.name} ({preset.city})</span>
-                              <span className="text-[10px] text-slate-500 truncate">{preset.address}</span>
-                            </button>
-                          ))
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const coords = inferCoordinatesFromAddress(pickupSearchQuery, 30.6425, 76.8173);
-                              setPickup({ address: pickupSearchQuery, lat: coords.lat, lng: coords.lng });
-                              setPickupSearchQuery('');
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-emerald-50 transition-colors flex flex-col cursor-pointer"
-                          >
-                            <span className="text-xs font-bold text-emerald-800">Use custom: "{pickupSearchQuery}"</span>
-                            <span className="text-[10px] text-slate-500">Click to set as pickup location</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <textarea
-                    rows={2}
-                    value={pickup ? pickup.address : ''}
-                    onChange={(e) => {
-                      const newAddress = e.target.value;
-                      const coords = inferCoordinatesFromAddress(
-                        newAddress,
-                        pickup?.lat || 30.6425,
-                        pickup?.lng || 76.8173
-                      );
-                      setPickup({
-                        address: newAddress,
-                        lat: coords.lat,
-                        lng: coords.lng,
-                      });
-                    }}
-                    placeholder="Enter exact pickup address (e.g. House 302, VIP Road, Zirakpur)..."
-                    className="w-full p-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
+            {/* ========================================================
+                BOOKING FORM IN THE CENTER OF THE MAIN PAGE
+                WITH DROP DOWN BUTTON AND SCROLL STYLE UP AND DOWN
+                OPENS FROM BOTTOM OF MAIN PAGE TO TOP HALF PAGE
+            ======================================================== */}
+            <div
+              className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-full max-w-2xl px-2 sm:px-4 z-30 transition-all duration-300 ease-in-out flex flex-col ${
+                sheetState === 'collapsed'
+                  ? 'h-[74px]'
+                  : sheetState === 'half'
+                  ? 'h-[56%] sm:h-[60%]'
+                  : 'h-[92%]'
+              }`}
+            >
+              <div className="bg-white/95 backdrop-blur-md rounded-t-3xl border-t-2 border-x-2 border-indigo-500/20 shadow-2xl flex flex-col h-full overflow-hidden">
+                {/* DRAWER TOP BAR & DROP-DOWN BUTTON HEADER */}
+                <div
+                  onTouchStart={handleSheetTouchStart}
+                  onTouchEnd={handleSheetTouchEnd}
+                  className="px-4 py-2.5 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200 shrink-0 select-none"
+                >
+                  {/* Center Drag Handle (Scroll / Drag Indicator) */}
+                  <div
+                    onClick={() => setSheetState(sheetState === 'collapsed' ? 'half' : 'collapsed')}
+                    className="w-14 h-1.5 bg-slate-300 hover:bg-indigo-500 rounded-full mx-auto mb-2 cursor-pointer transition-colors"
+                    title={sheetState === 'collapsed' ? 'Click or scroll up to open' : 'Click or scroll down to drop'}
                   />
-                  {pickup && (
-                    <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
-                      <span>Coordinates: {pickup.lat.toFixed(4)}, {pickup.lng.toFixed(4)}</span>
-                    </div>
-                  )}
-                </div>
 
-                {/* Dropoff Address */}
-                <div className="p-4 rounded-xl border border-rose-300 bg-rose-50/30 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-extrabold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                      <span>Dropoff Address</span>
-                    </label>
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-100 text-rose-800">
-                      Step 2
-                    </span>
-                  </div>
-
-                  {/* Search Dropoff Address Bar */}
-                  <div className="space-y-1.5 relative">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-rose-800 flex items-center gap-1">
-                        <Search className="w-3 h-3 text-rose-600" />
-                        <span>Search Dropoff Landmark / Area</span>
-                      </span>
-                    </div>
-                    <div className="relative flex items-center">
-                      <input
-                        type="text"
-                        value={dropoffSearchQuery}
-                        onChange={(e) => setDropoffSearchQuery(e.target.value)}
-                        placeholder="Type drop landmark or area (e.g. Sector 43, QuarkCity)..."
-                        className="w-full pl-8 pr-3 py-2 text-xs bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
-                      />
-                      <Search className="w-3.5 h-3.5 text-rose-600 absolute left-2.5" />
-                    </div>
-                    {dropoffSearchQuery.trim().length > 0 && (
-                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-rose-200 rounded-xl shadow-lg max-h-44 overflow-y-auto divide-y divide-slate-100">
-                        {TRICITY_POPULAR_PRESETS.filter(p => 
-                          p.name.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
-                          p.address.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
-                          p.city.toLowerCase().includes(dropoffSearchQuery.toLowerCase())
-                        ).length > 0 ? (
-                          TRICITY_POPULAR_PRESETS.filter(p => 
-                            p.name.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
-                            p.address.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
-                            p.city.toLowerCase().includes(dropoffSearchQuery.toLowerCase())
-                          ).map((preset) => (
-                            <button
-                              key={preset.name}
-                              type="button"
-                              onClick={() => {
-                                setDestination({ address: preset.address, lat: preset.lat, lng: preset.lng });
-                                setDropoffSearchQuery('');
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-rose-50 transition-colors flex flex-col cursor-pointer"
-                            >
-                              <span className="text-xs font-bold text-slate-900">{preset.name} ({preset.city})</span>
-                              <span className="text-[10px] text-slate-500 truncate">{preset.address}</span>
-                            </button>
-                          ))
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const coords = inferCoordinatesFromAddress(dropoffSearchQuery, 30.7333, 76.7794);
-                              setDestination({ address: dropoffSearchQuery, lat: coords.lat, lng: coords.lng });
-                              setDropoffSearchQuery('');
-                            }}
-                            className="w-full text-left px-3 py-2 hover:bg-rose-50 transition-colors flex flex-col cursor-pointer"
-                          >
-                            <span className="text-xs font-bold text-rose-800">Use custom: "{dropoffSearchQuery}"</span>
-                            <span className="text-[10px] text-slate-500">Click to set as drop location</span>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <textarea
-                    rows={2}
-                    value={destination ? destination.address : ''}
-                    onChange={(e) => {
-                      const newAddress = e.target.value;
-                      const coords = inferCoordinatesFromAddress(
-                        newAddress,
-                        destination?.lat || 30.7333,
-                        destination?.lng || 76.7794
-                      );
-                      setDestination({
-                        address: newAddress,
-                        lat: coords.lat,
-                        lng: coords.lng,
-                      });
-                    }}
-                    placeholder="Enter exact drop address (e.g. Tower A, QuarkCity, Phase 8B, Mohali)..."
-                    className="w-full p-3 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
-                  />
-                  {destination && (
-                    <div className="flex items-center justify-between text-[10px] text-rose-700 font-mono">
-                      <span>Coordinates: {destination.lat.toFixed(4)}, {destination.lng.toFixed(4)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-
-            </div>
-
-            {/* SECTION 2: DELIVERY TYPE, RECIPIENT, PAYMENT & SUBMIT */}
-            <form onSubmit={handleBookOrder} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
-                <div>
-                  <h2 className="text-lg font-bold font-heading text-slate-900 mb-1">
-                    2. Select Delivery Type
-                  </h2>
-                  <p className="text-xs text-slate-500 mb-3">Choose the category of items you are sending</p>
-                  <div className="relative">
-                    <select
-                      value={deliveryType}
-                      onChange={(e) => setDeliveryType(e.target.value as DeliveryType)}
-                      required
-                      className="w-full px-3.5 py-3 text-xs sm:text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-indigo-900 shadow-2xs cursor-pointer"
+                  <div className="flex items-center justify-between gap-2">
+                    <div
+                      onClick={() => setSheetState(sheetState === 'collapsed' ? 'half' : 'collapsed')}
+                      className="flex items-center gap-2.5 cursor-pointer min-w-0"
                     >
-                      {deliveryTypesList.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Schedule Delivery */}
-                <div className="pt-4 border-t border-slate-100 space-y-3">
-                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-                    3. Schedule Delivery & Pickup Slot
-                  </h3>
-
-                  <div className="space-y-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Select Delivery Date
-                      </label>
-                      <input
-                        type="date"
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                        required
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 shadow-2xs"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Select Pickup Slot
-                      </label>
-                      <select
-                        value={selectedSlot}
-                        onChange={(e) => setSelectedSlot(e.target.value)}
-                        required
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 shadow-2xs font-semibold text-indigo-900"
-                      >
-                        <option value="10:00AM To 12:00PM Zirakhpur to Chandigarh dropoff">
-                          10:00AM To 12:00PM Zirakhpur to Chandigarh dropoff
-                        </option>
-                        <option value="12:00PM To 2:00PM Chandigarh To Mohali dropoff">
-                          12:00PM To 2:00PM Chandigarh To Mohali dropoff
-                        </option>
-                        <option value="2:00PM To 4:00PM Mohali To Kharar Dropoff">
-                          2:00PM To 4:00PM Mohali To Kharar Dropoff
-                        </option>
-                        <option value="4:00PM To 5:30 PM Kharar To Zirakhpur Dropoff">
-                          4:00PM To 5:30 PM Kharar To Zirakhpur Dropoff
-                        </option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 4. Recipient & Sender Contact Details & Message Drop Options */}
-                <div className="pt-4 border-t border-slate-100 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                      <User className="w-4 h-4 text-indigo-600" />
-                      <span>4. Recipient & Sender Contact Details</span>
-                    </h3>
-                    <span className="text-[11px] font-medium text-slate-500">Contact & Instructions</span>
-                  </div>
-
-                  {/* PART A: RECIPIENT DETAILS */}
-                  <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/30 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
-                        <span>Recipient Details (Dropoff Contact)</span>
-                      </span>
-                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-md">
-                        Drop Location
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Recipient Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={recipientName}
-                          onChange={(e) => setRecipientName(e.target.value)}
-                          required
-                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900"
-                          placeholder="Full Name of Recipient"
-                        />
+                      <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0 shadow-2xs">
+                        <Package className="w-4 h-4 text-indigo-600" />
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Recipient Phone Number *
-                        </label>
-                        <input
-                          type="tel"
-                          value={recipientPhone}
-                          onChange={(e) => setRecipientPhone(e.target.value)}
-                          required
-                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900"
-                          placeholder="+91 Mobile Number"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Message Drop / Note for Recipient */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-                        <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Message Drop / Note for Recipient & Rider (Optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={recipientNotes}
-                        onChange={(e) => setRecipientNotes(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
-                        placeholder="e.g. Call on arrival, leave with security guard, or drop message"
-                      />
-                    </div>
-                  </div>
-
-                  {/* PART B: SENDER DETAILS (BELOW RECIPIENT) */}
-                  <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-                        <span>Sender Details (Pickup Contact)</span>
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                        Pickup Location
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Sender Name *
-                        </label>
-                        <input
-                          type="text"
-                          value={senderName}
-                          onChange={(e) => setSenderName(e.target.value)}
-                          required
-                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"
-                          placeholder="Full Name of Sender"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Sender Phone Number *
-                        </label>
-                        <input
-                          type="tel"
-                          value={senderPhone}
-                          onChange={(e) => setSenderPhone(e.target.value)}
-                          required
-                          className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"
-                          placeholder="+91 Mobile Number"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Message Drop / Note for Sender */}
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Message Drop / Pickup Note from Sender (Optional)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={senderNotes}
-                        onChange={(e) => setSenderNotes(e.target.value)}
-                        className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-800"
-                        placeholder="e.g. Ring doorbell twice on pickup, package ready on counter"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Payment Options */}
-                <div className="pt-4 border-t border-slate-100">
-                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-2">
-                    5. Payment Method
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-1">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('upi')}
-                      className={`p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 ${
-                        paymentMethod === 'upi' || paymentMethod === 'qr'
-                          ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-600/20'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
-                        <Smartphone className="w-5 h-5 text-indigo-600" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>UPI Payment</span>
-                          <span className="px-1.5 py-0.2 text-[9px] font-extrabold bg-indigo-600 text-white rounded">UPI</span>
+                      <div className="truncate">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xs sm:text-sm font-extrabold text-slate-900 font-heading truncate">
+                            Courier Booking Form
+                          </h2>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-100 hidden xs:inline-block">
+                            {sheetState === 'half'
+                              ? 'Top Half Page'
+                              : sheetState === 'full'
+                              ? 'Full View'
+                              : 'Bottom Docked'}
+                          </span>
                         </div>
-                        <div className="text-[10px] font-medium text-slate-500">Pay via GPay, PhonePe, Paytm or UPI</div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setPaymentMethod('cash')}
-                      className={`p-3.5 rounded-2xl border text-left transition-all flex items-center gap-3 ${
-                        paymentMethod === 'cash'
-                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-600/20'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
-                        <CreditCard className="w-5 h-5 text-emerald-700" />
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900">Cash on Delivery / Pickup</div>
-                        <div className="text-[10px] font-medium text-slate-500">Pay rider directly in cash upon delivery</div>
-                      </div>
-                    </button>
-                  </div>
-
-                  {(paymentMethod === 'upi' || paymentMethod === 'qr') && (
-                    <div className="mt-2.5 p-3.5 bg-indigo-50/70 rounded-2xl border border-indigo-100 text-xs text-indigo-950 flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                        ✓
-                      </div>
-                      <div>
-                        <span className="font-bold block text-indigo-900">UPI Selected</span>
-                        <span className="text-[11px] text-indigo-700">You can pay using any UPI app (GPay, PhonePe, Paytm, BHIM) upon pickup or delivery.</span>
+                        <p className="text-[10px] text-slate-500 truncate">
+                          {pickup && destination
+                            ? `${distanceKm} km route • Total ${formatCurrency(calculatedFare)}`
+                            : 'Scroll up to view fields & book delivery'}
+                        </p>
                       </div>
                     </div>
-                  )}
+
+                    {/* DROP DOWN BUTTON & CONTROLS */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {/* Fare Badge */}
+                      {calculatedFare > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-mono text-[11px] font-extrabold hidden sm:inline-block">
+                          {formatCurrency(calculatedFare)}
+                        </span>
+                      )}
+
+                      {/* DROP DOWN BUTTON (Requested primary feature) */}
+                      {sheetState !== 'collapsed' ? (
+                        <button
+                          type="button"
+                          onClick={() => setSheetState('collapsed')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 font-extrabold text-xs transition-colors shadow-2xs cursor-pointer border border-slate-300"
+                          title="Drop down to bottom of main page"
+                          aria-label="Drop down booking form"
+                        >
+                          <ChevronDown className="w-4 h-4 text-slate-700 animate-pulse" />
+                          <span>Drop Down</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setSheetState('half')}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs transition-colors shadow-sm cursor-pointer"
+                          title="Open from bottom of main page to top half page"
+                          aria-label="Open booking form"
+                        >
+                          <ChevronUp className="w-4 h-4 text-white animate-pulse" />
+                          <span>Open Form</span>
+                        </button>
+                      )}
+
+                      {/* Expand/Restore Button */}
+                      {sheetState === 'half' && (
+                        <button
+                          type="button"
+                          onClick={() => setSheetState('full')}
+                          className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-200 cursor-pointer hidden sm:flex"
+                          title="Expand to Full Height"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {sheetState === 'full' && (
+                        <button
+                          type="button"
+                          onClick={() => setSheetState('half')}
+                          className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 transition-colors border border-slate-200 cursor-pointer"
+                          title="Restore to Top Half Page"
+                        >
+                          <Minimize2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Fare & Booking Button */}
-                <div className="pt-4 border-t border-slate-200 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-500 block">Exact Distance & Total Calculated Fare</span>
-                      <span className="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                        <span>{distanceKm} km route • Base ₹30 + ₹10/extra km</span>
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-xs text-slate-400 block font-medium">Total Amount</span>
-                      <span className="text-2xl font-black text-slate-900 font-heading">
-                        {formatCurrency(calculatedFare)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isBooking}
-                    className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-50"
+                {/* SCROLL STYLE UP AND DOWN: SCROLLABLE FORM BODY */}
+                {sheetState !== 'collapsed' ? (
+                  <form
+                    onSubmit={handleBookOrder}
+                    className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5 scrollbar-thin scrollbar-thumb-slate-300 overscroll-contain"
                   >
-                    {isBooking ? (
-                      <span>Dispatching Order...</span>
-                    ) : (
-                      <>
-                        <span>Confirm & Book Order</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+                    {/* SECTION 1: PICKUP & DROPOFF ADDRESSES */}
+                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                        <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
+                          <MapPin className="w-4 h-4 text-indigo-600" />
+                          <span>1. Pickup & Dropoff Location</span>
+                        </h3>
+                        <span className="text-[10px] text-slate-500 font-medium">Step 1 of 4</span>
+                      </div>
+
+                      {/* Pickup & Dropoff Address Fields */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Pickup Address Box */}
+                        <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                              <span>Pickup Address</span>
+                            </label>
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                              Pickup
+                            </span>
+                          </div>
+
+                          {/* Search Pickup Address Bar */}
+                          <div className="space-y-1 relative">
+                            <div className="relative flex items-center">
+                              <input
+                                type="text"
+                                value={pickupSearchQuery}
+                                onChange={(e) => setPickupSearchQuery(e.target.value)}
+                                placeholder="Search area (VIP Road, Sec 17)..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
+                              />
+                              <Search className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5" />
+                            </div>
+                            {pickupSearchQuery.trim().length > 0 && (
+                              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-emerald-200 rounded-xl shadow-lg max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                {TRICITY_POPULAR_PRESETS.filter(
+                                  (p) =>
+                                    p.name.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
+                                    p.address.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
+                                    p.city.toLowerCase().includes(pickupSearchQuery.toLowerCase())
+                                ).length > 0 ? (
+                                  TRICITY_POPULAR_PRESETS.filter(
+                                    (p) =>
+                                      p.name.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
+                                      p.address.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
+                                      p.city.toLowerCase().includes(pickupSearchQuery.toLowerCase())
+                                  ).map((preset) => (
+                                    <button
+                                      key={preset.name}
+                                      type="button"
+                                      onClick={() => {
+                                        setPickup({ address: preset.address, lat: preset.lat, lng: preset.lng });
+                                        setPickupSearchQuery('');
+                                      }}
+                                      className="w-full text-left px-3 py-2 hover:bg-emerald-50 transition-colors flex flex-col cursor-pointer"
+                                    >
+                                      <span className="text-xs font-bold text-slate-900">
+                                        {preset.name} ({preset.city})
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 truncate">{preset.address}</span>
+                                    </button>
+                                  ))
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const coords = inferCoordinatesFromAddress(pickupSearchQuery, 30.6425, 76.8173);
+                                      setPickup({ address: pickupSearchQuery, lat: coords.lat, lng: coords.lng });
+                                      setPickupSearchQuery('');
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-emerald-50 transition-colors flex flex-col cursor-pointer"
+                                  >
+                                    <span className="text-xs font-bold text-emerald-800">
+                                      Use: "{pickupSearchQuery}"
+                                    </span>
+                                    <span className="text-[10px] text-slate-500">Click to set as pickup</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <textarea
+                            rows={2}
+                            value={pickup ? pickup.address : ''}
+                            onChange={(e) => {
+                              const newAddress = e.target.value;
+                              const coords = inferCoordinatesFromAddress(
+                                newAddress,
+                                pickup?.lat || 30.6425,
+                                pickup?.lng || 76.8173
+                              );
+                              setPickup({
+                                address: newAddress,
+                                lat: coords.lat,
+                                lng: coords.lng,
+                              });
+                            }}
+                            placeholder="Enter exact pickup address..."
+                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
+                          />
+                          {pickup && (
+                            <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
+                              <span>Coord: {pickup.lat.toFixed(4)}, {pickup.lng.toFixed(4)}</span>
+                              <span className="font-bold text-emerald-800">✓ Set</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dropoff Address Box */}
+                        <div className="p-3.5 rounded-xl border border-rose-300 bg-rose-50/30 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-extrabold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                              <span>Dropoff Address</span>
+                            </label>
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-100 text-rose-800">
+                              Dropoff
+                            </span>
+                          </div>
+
+                          {/* Search Dropoff Address Bar */}
+                          <div className="space-y-1 relative">
+                            <div className="relative flex items-center">
+                              <input
+                                type="text"
+                                value={dropoffSearchQuery}
+                                onChange={(e) => setDropoffSearchQuery(e.target.value)}
+                                placeholder="Search area (Sector 43, QuarkCity)..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
+                              />
+                              <Search className="w-3.5 h-3.5 text-rose-600 absolute left-2.5" />
+                            </div>
+                            {dropoffSearchQuery.trim().length > 0 && (
+                              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-rose-200 rounded-xl shadow-lg max-h-40 overflow-y-auto divide-y divide-slate-100">
+                                {TRICITY_POPULAR_PRESETS.filter(
+                                  (p) =>
+                                    p.name.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
+                                    p.address.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
+                                    p.city.toLowerCase().includes(dropoffSearchQuery.toLowerCase())
+                                ).length > 0 ? (
+                                  TRICITY_POPULAR_PRESETS.filter(
+                                    (p) =>
+                                      p.name.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
+                                      p.address.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
+                                      p.city.toLowerCase().includes(dropoffSearchQuery.toLowerCase())
+                                  ).map((preset) => (
+                                    <button
+                                      key={preset.name}
+                                      type="button"
+                                      onClick={() => {
+                                        setDestination({ address: preset.address, lat: preset.lat, lng: preset.lng });
+                                        setDropoffSearchQuery('');
+                                      }}
+                                      className="w-full text-left px-3 py-2 hover:bg-rose-50 transition-colors flex flex-col cursor-pointer"
+                                    >
+                                      <span className="text-xs font-bold text-slate-900">
+                                        {preset.name} ({preset.city})
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 truncate">{preset.address}</span>
+                                    </button>
+                                  ))
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const coords = inferCoordinatesFromAddress(dropoffSearchQuery, 30.7333, 76.7794);
+                                      setDestination({ address: dropoffSearchQuery, lat: coords.lat, lng: coords.lng });
+                                      setDropoffSearchQuery('');
+                                    }}
+                                    className="w-full text-left px-3 py-2 hover:bg-rose-50 transition-colors flex flex-col cursor-pointer"
+                                  >
+                                    <span className="text-xs font-bold text-rose-800">
+                                      Use: "{dropoffSearchQuery}"
+                                    </span>
+                                    <span className="text-[10px] text-slate-500">Click to set as drop</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          <textarea
+                            rows={2}
+                            value={destination ? destination.address : ''}
+                            onChange={(e) => {
+                              const newAddress = e.target.value;
+                              const coords = inferCoordinatesFromAddress(
+                                newAddress,
+                                destination?.lat || 30.7333,
+                                destination?.lng || 76.7794
+                              );
+                              setDestination({
+                                address: newAddress,
+                                lat: coords.lat,
+                                lng: coords.lng,
+                              });
+                            }}
+                            placeholder="Enter exact dropoff address..."
+                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
+                          />
+                          {destination && (
+                            <div className="flex items-center justify-between text-[10px] text-rose-700 font-mono">
+                              <span>Coord: {destination.lat.toFixed(4)}, {destination.lng.toFixed(4)}</span>
+                              <span className="font-bold text-rose-800">✓ Set</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 2: DELIVERY TYPE & SCHEDULE */}
+                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                        <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
+                          <Package className="w-4 h-4 text-indigo-600" />
+                          <span>2. Select Delivery Type & Schedule</span>
+                        </h3>
+                        <span className="text-[10px] text-slate-500 font-medium">Step 2 of 4</span>
+                      </div>
+
+                      {/* Delivery Type Chips */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-2">
+                          Category of Package
+                        </label>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {deliveryTypesList.map((item) => {
+                            const IconComp = item.icon;
+                            const isSelected = deliveryType === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setDeliveryType(item.id)}
+                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
+                                  isSelected
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                                }`}
+                              >
+                                <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-indigo-600'}`} />
+                                <div className="min-w-0">
+                                  <div className="text-xs font-bold truncate">{item.title}</div>
+                                  <div className={`text-[9px] truncate ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                                    {item.desc}
+                                  </div>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Schedule Delivery Date & Slot */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Delivery Date
+                          </label>
+                          <input
+                            type="date"
+                            value={scheduledDate}
+                            onChange={(e) => setScheduledDate(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 shadow-2xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Pickup Slot
+                          </label>
+                          <select
+                            value={selectedSlot}
+                            onChange={(e) => setSelectedSlot(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-indigo-900 shadow-2xs cursor-pointer"
+                          >
+                            <option value="10:00AM To 12:00PM Zirakhpur to Chandigarh dropoff">
+                              10:00AM To 12:00PM (Zirakpur to Chd)
+                            </option>
+                            <option value="12:00PM To 2:00PM Chandigarh To Mohali dropoff">
+                              12:00PM To 2:00PM (Chd to Mohali)
+                            </option>
+                            <option value="2:00PM To 4:00PM Mohali To Kharar Dropoff">
+                              2:00PM To 4:00PM (Mohali to Kharar)
+                            </option>
+                            <option value="4:00PM To 5:30 PM Kharar To Zirakhpur Dropoff">
+                              4:00PM To 5:30 PM (Kharar to Zirakpur)
+                            </option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SECTION 3: RECIPIENT & SENDER CONTACT */}
+                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                        <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
+                          <User className="w-4 h-4 text-indigo-600" />
+                          <span>3. Recipient & Sender Contact</span>
+                        </h3>
+                        <span className="text-[10px] text-slate-500 font-medium">Step 3 of 4</span>
+                      </div>
+
+                      {/* Recipient Details */}
+                      <div className="p-3 bg-white rounded-xl border border-indigo-200 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-indigo-900 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                            <span>Recipient (Dropoff Contact) *</span>
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <input
+                            type="text"
+                            value={recipientName}
+                            onChange={(e) => setRecipientName(e.target.value)}
+                            required
+                            placeholder="Recipient Full Name"
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900"
+                          />
+                          <input
+                            type="tel"
+                            value={recipientPhone}
+                            onChange={(e) => setRecipientPhone(e.target.value)}
+                            required
+                            placeholder="Recipient Mobile (+91)"
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={recipientNotes}
+                          onChange={(e) => setRecipientNotes(e.target.value)}
+                          placeholder="Dropoff note (e.g. call on arrival, leave at desk)"
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 text-[11px]"
+                        />
+                      </div>
+
+                      {/* Sender Details */}
+                      <div className="p-3 bg-white rounded-xl border border-emerald-200 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                            <span>Sender (Pickup Contact) *</span>
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <input
+                            type="text"
+                            value={senderName}
+                            onChange={(e) => setSenderName(e.target.value)}
+                            required
+                            placeholder="Sender Full Name"
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"
+                          />
+                          <input
+                            type="tel"
+                            value={senderPhone}
+                            onChange={(e) => setSenderPhone(e.target.value)}
+                            required
+                            placeholder="Sender Mobile (+91)"
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          value={senderNotes}
+                          onChange={(e) => setSenderNotes(e.target.value)}
+                          placeholder="Pickup note (e.g. ring doorbell twice, gate #2)"
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 text-[11px]"
+                        />
+                      </div>
+                    </div>
+
+                    {/* SECTION 4: PAYMENT METHOD & FARE CONFIRMATION */}
+                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                        <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
+                          <CreditCard className="w-4 h-4 text-indigo-600" />
+                          <span>4. Payment Method & Fare Summary</span>
+                        </h3>
+                        <span className="text-[10px] text-slate-500 font-medium">Step 4 of 4</span>
+                      </div>
+
+                      {/* Payment Method Selector */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('upi')}
+                          className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                            paymentMethod === 'upi' || paymentMethod === 'qr'
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-600/20'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
+                            <Smartphone className="w-4 h-4 text-indigo-600" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                              <span>UPI Payment</span>
+                              <span className="px-1 py-0.2 text-[8px] font-extrabold bg-indigo-600 text-white rounded">UPI</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500">Pay via GPay, PhonePe, Paytm</div>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('cash')}
+                          className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                            paymentMethod === 'cash'
+                              ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-600/20'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
+                            <CreditCard className="w-4 h-4 text-emerald-700" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-bold text-slate-900">Cash on Delivery</div>
+                            <div className="text-[10px] text-slate-500">Pay rider directly in cash</div>
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Fare Breakdown Box */}
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] text-slate-500 block">Total Calculated Fare</span>
+                          <span className="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>{distanceKm} km route • Base ₹30 + ₹10/extra km</span>
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-400 block font-medium">Estimated Total</span>
+                          <span className="text-2xl font-black text-slate-900 font-heading">
+                            {formatCurrency(calculatedFare)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Submit Order Button */}
+                      <button
+                        type="submit"
+                        disabled={isBooking}
+                        className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isBooking ? (
+                          <span>Dispatching Order...</span>
+                        ) : (
+                          <>
+                            <span>Confirm & Book Order</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div
+                    onClick={() => setSheetState('half')}
+                    className="px-4 py-2 flex items-center justify-between text-xs text-slate-600 cursor-pointer bg-slate-50/70 hover:bg-slate-100 transition-colors"
+                  >
+                    <span className="truncate">
+                      <strong>Pickup:</strong> {pickup ? pickup.address.slice(0, 24) + '...' : 'Not set'} &bull;{' '}
+                      <strong>Drop:</strong> {destination ? destination.address.slice(0, 24) + '...' : 'Not set'}
+                    </span>
+                    <span className="text-indigo-600 font-extrabold flex items-center gap-1 shrink-0 ml-2">
+                      <span>Open Form</span>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </div>
+        )}
 
         {/* ========================================================
             TAB 2: "Pending Requests" PAGE (CRITICAL USER REQUIREMENT)
