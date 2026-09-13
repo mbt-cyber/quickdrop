@@ -31,6 +31,7 @@ import {
   Phone,
   CreditCard,
   Smartphone,
+  Banknote,
   Calendar,
   MapPin,
   CheckCircle2,
@@ -1193,60 +1194,70 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                       </div>
                     </div>
 
-                    {/* SECTION 4: PAYMENT METHOD & FARE CONFIRMATION */}
-                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                    {/* SECTION 4: PAYMENT METHOD & FARE CONFIRMATION - BOX-LESS DESIGN WITH ONLY ICONS */}
+                    <div className="space-y-4 pb-2">
+                      <div className="flex items-center justify-between pb-1">
                         <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
                           <CreditCard className="w-4 h-4 text-indigo-600" />
-                          <span>4. Payment Method & Fare Summary</span>
+                          <span>Payment Method</span>
+                          <span className="text-[11px] font-bold text-indigo-600">
+                            &bull; {paymentMethod === 'cash' ? 'Cash on Delivery' : 'UPI Payment'}
+                          </span>
                         </h3>
-                        <span className="text-[10px] text-slate-500 font-medium">Step 4 of 4</span>
+                        <span className="text-[10px] text-slate-400 font-semibold hidden sm:inline">Step 4 of 4</span>
                       </div>
 
-                      {/* Payment Method Selector */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Payment Method - Icons Only (Box-less) */}
+                      <div className="flex items-center gap-6 py-1">
                         <button
                           type="button"
                           onClick={() => setPaymentMethod('upi')}
-                          className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                          title="UPI Payment (GPay, PhonePe, Paytm)"
+                          aria-label="UPI Payment"
+                          className={`relative flex flex-col items-center justify-center transition-all cursor-pointer p-1.5 ${
                             paymentMethod === 'upi' || paymentMethod === 'qr'
-                              ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-600/20'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              ? 'text-indigo-600 scale-115'
+                              : 'text-slate-400 hover:text-slate-700'
                           }`}
                         >
-                          <div className="w-8 h-8 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center shrink-0">
-                            <Smartphone className="w-4 h-4 text-indigo-600" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-900 flex items-center gap-1">
-                              <span>UPI Payment</span>
-                              <span className="px-1 py-0.2 text-[8px] font-extrabold bg-indigo-600 text-white rounded">UPI</span>
-                            </div>
-                            <div className="text-[10px] text-slate-500">Pay via GPay, PhonePe, Paytm</div>
-                          </div>
+                          <Smartphone
+                            className={`w-6 h-6 transition-all ${
+                              paymentMethod === 'upi' || paymentMethod === 'qr'
+                                ? 'stroke-[2.5]'
+                                : 'stroke-[1.75]'
+                            }`}
+                          />
+                          {(paymentMethod === 'upi' || paymentMethod === 'qr') && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 mt-1"></span>
+                          )}
                         </button>
 
                         <button
                           type="button"
                           onClick={() => setPaymentMethod('cash')}
-                          className={`p-3 rounded-xl border text-left transition-all flex items-center gap-2.5 cursor-pointer ${
+                          title="Cash on Delivery (Pay rider in cash)"
+                          aria-label="Cash on Delivery"
+                          className={`relative flex flex-col items-center justify-center transition-all cursor-pointer p-1.5 ${
                             paymentMethod === 'cash'
-                              ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-600/20'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              ? 'text-emerald-600 scale-115'
+                              : 'text-slate-400 hover:text-slate-700'
                           }`}
                         >
-                          <div className="w-8 h-8 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0">
-                            <CreditCard className="w-4 h-4 text-emerald-700" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-900">Cash on Delivery</div>
-                            <div className="text-[10px] text-slate-500">Pay rider directly in cash</div>
-                          </div>
+                          <Banknote
+                            className={`w-6 h-6 transition-all ${
+                              paymentMethod === 'cash'
+                                ? 'stroke-[2.5]'
+                                : 'stroke-[1.75]'
+                            }`}
+                          />
+                          {paymentMethod === 'cash' && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mt-1"></span>
+                          )}
                         </button>
                       </div>
 
-                      {/* Fare Breakdown Box */}
-                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
+                      {/* Fare Breakdown */}
+                      <div className="py-2.5 flex items-center justify-between border-t border-slate-200/80">
                         <div>
                           <span className="text-[11px] text-slate-500 block">Total Calculated Fare</span>
                           <span className="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
