@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { MapPicker } from './MapPicker';
 import { uploadQuickDropFile } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { playNewOrderChime } from '../lib/syncEngine';
@@ -593,35 +592,67 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
             TAB 1: BOOK ORDER FORM
         ======================================================== */}
         {activeTab === 'book' && (
-          <div className="relative w-full h-[calc(100vh-10.5rem)] min-h-[600px] sm:min-h-[640px] rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm bg-slate-100 flex flex-col">
-            {/* BACKGROUND: INTERACTIVE TRICITY LIVE MAP */}
-            <MapPicker
-              pickup={pickup}
-              destination={destination}
-              onSelectPickup={(loc) => {
-                setPickup(loc);
-                if (sheetState === 'collapsed') setSheetState('half');
-              }}
-              onSelectDestination={(loc) => {
-                setDestination(loc);
-                if (sheetState === 'collapsed') setSheetState('half');
-              }}
-              activeMode={mapActiveMode}
-              setActiveMode={setMapActiveMode}
-              className="w-full h-full"
-            />
+          <div className="relative w-full h-[calc(100vh-10.5rem)] min-h-[600px] sm:min-h-[640px] rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm bg-gradient-to-br from-slate-50 via-indigo-50/25 to-slate-100 flex flex-col">
+            {/* CLEAN BACKGROUND (MAP REMOVED) */}
+            <div className="absolute inset-0 flex flex-col items-center justify-start p-6 sm:p-10 select-none overflow-hidden">
+              {/* Subtle Decorative Pattern */}
+              <div className="absolute inset-0 opacity-[0.035] bg-[radial-gradient(#4338ca_1px,transparent_1px)] [background-size:20px_20px] pointer-events-none" />
 
-            {/* FLOATING ACTION PILL ON MAP (WHEN COLLAPSED) */}
-            {sheetState === 'collapsed' && (
-              <button
-                type="button"
-                onClick={() => setSheetState('half')}
-                className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-full shadow-2xl flex items-center gap-2 border-2 border-white transition-all transform hover:scale-105 active:scale-95 cursor-pointer animate-bounce"
-              >
-                <Package className="w-4 h-4" />
-                <span>Open Booking Form &uarr;</span>
-              </button>
-            )}
+              {/* Service Header & Quick Highlights */}
+              <div className="relative z-10 w-full max-w-2xl text-center pt-2 sm:pt-4">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-indigo-100/80 text-indigo-900 text-xs font-bold mb-3 border border-indigo-200/80 shadow-2xs">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Tricity Express Courier Service</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-900 font-heading tracking-tight">
+                  Doorstep Pickup & Scheduled Delivery
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1.5 max-w-lg mx-auto">
+                  Direct parcel service across Chandigarh, Mohali, Panchkula, Zirakpur & Kharar with verified OTP tracking.
+                </p>
+
+                {/* Quick Info Highlights */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-6">
+                  <div className="p-3.5 bg-white/85 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs text-left">
+                    <div className="text-[10px] uppercase font-extrabold text-slate-400">Base Fare</div>
+                    <div className="text-base font-black text-slate-900 mt-0.5">₹30</div>
+                    <div className="text-[10px] text-slate-500">First 1 km included</div>
+                  </div>
+                  <div className="p-3.5 bg-white/85 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs text-left">
+                    <div className="text-[10px] uppercase font-extrabold text-slate-400">Rate / Km</div>
+                    <div className="text-base font-black text-slate-900 mt-0.5">₹10/km</div>
+                    <div className="text-[10px] text-slate-500">Subsequent distance</div>
+                  </div>
+                  <div className="p-3.5 bg-white/85 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs text-left">
+                    <div className="text-[10px] uppercase font-extrabold text-slate-400">Daily Slots</div>
+                    <div className="text-base font-black text-indigo-600 mt-0.5">4 Slots</div>
+                    <div className="text-[10px] text-slate-500">10:00 AM – 5:30 PM</div>
+                  </div>
+                  <div className="p-3.5 bg-white/85 backdrop-blur-xs rounded-2xl border border-slate-200/80 shadow-2xs text-left">
+                    <div className="text-[10px] uppercase font-extrabold text-slate-400">Security</div>
+                    <div className="text-base font-black text-emerald-600 mt-0.5">PIN Verify</div>
+                    <div className="text-[10px] text-slate-500">Safe OTP handoff</div>
+                  </div>
+                </div>
+
+                {/* Call to action when sheet is collapsed */}
+                {sheetState === 'collapsed' && (
+                  <div className="mt-8 flex flex-col items-center">
+                    <button
+                      type="button"
+                      onClick={() => setSheetState('half')}
+                      className="px-6 py-3.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-xl shadow-indigo-600/25 inline-flex items-center gap-2.5 transition-all cursor-pointer border border-indigo-500 animate-pulse"
+                    >
+                      <Package className="w-4 h-4" />
+                      <span>Open Booking Form &uarr;</span>
+                    </button>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      Click button or scroll the bottom drawer up to book your order
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* ========================================================
                 BOOKING FORM IN THE CENTER OF THE MAIN PAGE
