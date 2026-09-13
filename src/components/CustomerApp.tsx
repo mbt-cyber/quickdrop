@@ -56,6 +56,7 @@ import {
   Upload,
   Crosshair,
   LocateFixed,
+  ArrowUpDown,
 } from 'lucide-react';
 
 interface CustomerAppProps {
@@ -750,25 +751,62 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     onSubmit={handleBookOrder}
                     className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5 scrollbar-thin scrollbar-thumb-slate-300 overscroll-contain"
                   >
-                    {/* SECTION 1: PICKUP & DROPOFF ADDRESSES */}
-                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
-                        <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
-                          <MapPin className="w-4 h-4 text-indigo-600" />
-                          <span>1. Pickup & Dropoff Location</span>
-                        </h3>
-                        <span className="text-[10px] text-slate-500 font-medium">Step 1 of 4</span>
+                    {/* SECTION 1: PICKUP (A) & DROP (B) ROUTE - CLEAN UNIFIED DESIGN */}
+                    <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex items-center -space-x-1">
+                            <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center ring-2 ring-white shadow-xs">
+                              A
+                            </span>
+                            <span className="w-5 h-5 rounded-full bg-rose-600 text-white font-black text-[11px] flex items-center justify-center ring-2 ring-white shadow-xs">
+                              B
+                            </span>
+                          </div>
+                          <div>
+                            <h3 className="text-xs font-black font-heading text-slate-900 flex items-center gap-1.5">
+                              <span>Pickup (A) &amp; Drop (B)</span>
+                            </h3>
+                            <p className="text-[10px] text-slate-500">
+                              Specify pickup point A and destination drop point B
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {pickup && destination && (
+                            <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-black text-[10px] flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping"></span>
+                              <span>{distanceKm} km Route</span>
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400 font-semibold hidden sm:inline">Step 1 of 4</span>
+                        </div>
                       </div>
 
-                      {/* Pickup & Dropoff Address Fields */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Pickup Address Box */}
-                        <div className="p-3.5 rounded-xl border border-emerald-300 bg-emerald-50/30 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                              <span>Pickup Address</span>
-                            </label>
+                      {/* Route Journey A & B Form Blocks */}
+                      <div className="space-y-3">
+                        {/* POINT A: PICKUP */}
+                        <div
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            pickup
+                              ? 'border-emerald-300 bg-emerald-50/25 shadow-2xs'
+                              : 'border-slate-200 bg-slate-50/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                                A
+                              </span>
+                              <div>
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-900 block leading-tight">
+                                  Point A &bull; Pickup Address
+                                </span>
+                                <span className="text-[10px] text-slate-500">Where courier rider picks up</span>
+                              </div>
+                            </div>
+
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
@@ -799,32 +837,44 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                     );
                                   }
                                 }}
-                                className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-extrabold border border-blue-200 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                                title="Use current live GPS location as pickup"
+                                className="px-2 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-black border border-blue-200 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                title="Use current live GPS location as pickup point A"
                               >
                                 <Crosshair className="w-3 h-3 text-blue-600 animate-pulse" />
-                                <span>Use My Live GPS</span>
+                                <span>Use Live GPS</span>
                               </button>
-                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                                Pickup
-                              </span>
+
+                              {pickup && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPickup(null);
+                                    setPickupSearchQuery('');
+                                  }}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-rose-600 px-1 py-0.5 rounded transition-colors"
+                                  title="Clear Pickup Point A"
+                                >
+                                  Clear
+                                </button>
+                              )}
                             </div>
                           </div>
 
-                          {/* Search Pickup Address Bar */}
-                          <div className="space-y-1 relative">
+                          {/* Point A Search Bar */}
+                          <div className="space-y-1 relative mb-2">
                             <div className="relative flex items-center">
                               <input
                                 type="text"
                                 value={pickupSearchQuery}
                                 onChange={(e) => setPickupSearchQuery(e.target.value)}
-                                placeholder="Search area (VIP Road, Sec 17)..."
-                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
+                                placeholder="Search area for Point A (VIP Road, Sec 17, Aerocity)..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs placeholder-slate-400"
                               />
                               <Search className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5" />
                             </div>
+
                             {pickupSearchQuery.trim().length > 0 && (
-                              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-emerald-200 rounded-xl shadow-lg max-h-40 overflow-y-auto divide-y divide-slate-100">
+                              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto divide-y divide-slate-100">
                                 {TRICITY_POPULAR_PRESETS.filter(
                                   (p) =>
                                     p.name.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
@@ -865,13 +915,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                     <span className="text-xs font-bold text-emerald-800">
                                       Use: "{pickupSearchQuery}"
                                     </span>
-                                    <span className="text-[10px] text-slate-500">Click to set as pickup</span>
+                                    <span className="text-[10px] text-slate-500">Click to set as Point A</span>
                                   </button>
                                 )}
                               </div>
                             )}
                           </div>
 
+                          {/* Point A Detailed Address Textarea */}
                           <textarea
                             rows={2}
                             value={pickup ? pickup.address : ''}
@@ -888,43 +939,98 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                 lng: coords.lng,
                               });
                             }}
-                            placeholder="Enter exact pickup address..."
-                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs"
+                            placeholder="Enter flat/house no, landmark, or exact Point A address..."
+                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-800 shadow-2xs placeholder-slate-400"
                           />
+
                           {pickup && (
-                            <div className="flex items-center justify-between text-[10px] text-emerald-700 font-mono">
-                              <span>Coord: {pickup.lat.toFixed(4)}, {pickup.lng.toFixed(4)}</span>
-                              <span className="font-bold text-emerald-800">✓ Set</span>
+                            <div className="flex items-center justify-between mt-1.5 text-[10px] text-emerald-800 font-mono bg-emerald-100/60 px-2.5 py-1 rounded-lg">
+                              <span>Point A: {pickup.lat.toFixed(4)}, {pickup.lng.toFixed(4)}</span>
+                              <span className="font-black text-emerald-700">✓ Pickup A Selected</span>
                             </div>
                           )}
                         </div>
 
-                        {/* Dropoff Address Box */}
-                        <div className="p-3.5 rounded-xl border border-rose-300 bg-rose-50/30 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-extrabold uppercase tracking-wider text-rose-800 flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                              <span>Dropoff Address</span>
-                            </label>
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-100 text-rose-800">
-                              Dropoff
+                        {/* Midpoint Connector & Swap A ⇄ B Button */}
+                        <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100/90 rounded-xl border border-slate-200">
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span className="text-[11px] font-mono font-black text-slate-700">
+                              {pickup && destination ? `Route: A → B (${distanceKm} km)` : 'Direction: Point A to Point B'}
                             </span>
+                            <span className="w-2 h-2 rounded-full bg-rose-500"></span>
                           </div>
 
-                          {/* Search Dropoff Address Bar */}
-                          <div className="space-y-1 relative">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tempP = pickup;
+                              const tempD = destination;
+                              setPickup(tempD);
+                              setDestination(tempP);
+                              const tempQ = pickupSearchQuery;
+                              setPickupSearchQuery(dropoffSearchQuery);
+                              setDropoffSearchQuery(tempQ);
+                            }}
+                            className="px-2.5 py-1 bg-white hover:bg-slate-200 text-slate-700 text-[10px] font-black rounded-lg border border-slate-300 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                            title="Swap Pickup (A) and Drop (B) locations"
+                          >
+                            <ArrowUpDown className="w-3 h-3 text-indigo-600" />
+                            <span>Swap A ⇄ B</span>
+                          </button>
+                        </div>
+
+                        {/* POINT B: DROPOFF */}
+                        <div
+                          className={`p-3.5 rounded-xl border transition-all ${
+                            destination
+                              ? 'border-rose-300 bg-rose-50/25 shadow-2xs'
+                              : 'border-slate-200 bg-slate-50/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-rose-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                                B
+                              </span>
+                              <div>
+                                <span className="text-xs font-black uppercase tracking-wider text-slate-900 block leading-tight">
+                                  Point B &bull; Drop Address
+                                </span>
+                                <span className="text-[10px] text-slate-500">Where courier rider delivers</span>
+                              </div>
+                            </div>
+
+                            {destination && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDestination(null);
+                                  setDropoffSearchQuery('');
+                                }}
+                                className="text-[10px] font-bold text-slate-400 hover:text-rose-600 px-1 py-0.5 rounded transition-colors"
+                                title="Clear Drop Point B"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Point B Search Bar */}
+                          <div className="space-y-1 relative mb-2">
                             <div className="relative flex items-center">
                               <input
                                 type="text"
                                 value={dropoffSearchQuery}
                                 onChange={(e) => setDropoffSearchQuery(e.target.value)}
-                                placeholder="Search area (Sector 43, QuarkCity)..."
-                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-rose-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
+                                placeholder="Search area for Point B (Sector 43, QuarkCity, Sec 35)..."
+                                className="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs placeholder-slate-400"
                               />
                               <Search className="w-3.5 h-3.5 text-rose-600 absolute left-2.5" />
                             </div>
+
                             {dropoffSearchQuery.trim().length > 0 && (
-                              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-rose-200 rounded-xl shadow-lg max-h-40 overflow-y-auto divide-y divide-slate-100">
+                              <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-44 overflow-y-auto divide-y divide-slate-100">
                                 {TRICITY_POPULAR_PRESETS.filter(
                                   (p) =>
                                     p.name.toLowerCase().includes(dropoffSearchQuery.toLowerCase()) ||
@@ -965,13 +1071,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                     <span className="text-xs font-bold text-rose-800">
                                       Use: "{dropoffSearchQuery}"
                                     </span>
-                                    <span className="text-[10px] text-slate-500">Click to set as drop</span>
+                                    <span className="text-[10px] text-slate-500">Click to set as Point B</span>
                                   </button>
                                 )}
                               </div>
                             )}
                           </div>
 
+                          {/* Point B Detailed Address Textarea */}
                           <textarea
                             rows={2}
                             value={destination ? destination.address : ''}
@@ -988,13 +1095,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                 lng: coords.lng,
                               });
                             }}
-                            placeholder="Enter exact dropoff address..."
-                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs"
+                            placeholder="Enter flat/office no, landmark, or exact Point B address..."
+                            className="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium text-slate-800 shadow-2xs placeholder-slate-400"
                           />
+
                           {destination && (
-                            <div className="flex items-center justify-between text-[10px] text-rose-700 font-mono">
-                              <span>Coord: {destination.lat.toFixed(4)}, {destination.lng.toFixed(4)}</span>
-                              <span className="font-bold text-rose-800">✓ Set</span>
+                            <div className="flex items-center justify-between mt-1.5 text-[10px] text-rose-800 font-mono bg-rose-100/60 px-2.5 py-1 rounded-lg">
+                              <span>Point B: {destination.lat.toFixed(4)}, {destination.lng.toFixed(4)}</span>
+                              <span className="font-black text-rose-700">✓ Drop B Selected</span>
                             </div>
                           )}
                         </div>
@@ -1095,12 +1203,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                         <span className="text-[10px] text-slate-500 font-medium">Step 3 of 4</span>
                       </div>
 
-                      {/* Recipient Details */}
-                      <div className="p-3 bg-white rounded-xl border border-indigo-200 space-y-2.5">
+                      {/* Recipient Details (Point B) */}
+                      <div className="p-3 bg-white rounded-xl border border-rose-200 space-y-2.5">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-indigo-900 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
-                            <span>Recipient (Dropoff Contact) *</span>
+                          <span className="text-xs font-extrabold text-rose-900 flex items-center gap-1.5">
+                            <span className="w-4 h-4 rounded-full bg-rose-600 text-white font-black text-[10px] flex items-center justify-center">B</span>
+                            <span>Recipient Contact &bull; Drop (B) *</span>
                           </span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1130,12 +1238,12 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                         />
                       </div>
 
-                      {/* Sender Details */}
+                      {/* Sender Details (Point A) */}
                       <div className="p-3 bg-white rounded-xl border border-emerald-200 space-y-2.5">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-extrabold text-emerald-900 flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
-                            <span>Sender (Pickup Contact) *</span>
+                            <span className="w-4 h-4 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center">A</span>
+                            <span>Sender Contact &bull; Pickup (A) *</span>
                           </span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1257,10 +1365,17 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     onClick={() => setSheetState('half')}
                     className="px-4 py-2 flex items-center justify-between text-xs text-slate-600 cursor-pointer bg-slate-50/70 hover:bg-slate-100 transition-colors"
                   >
-                    <span className="truncate">
-                      <strong>Pickup:</strong> {pickup ? pickup.address.slice(0, 24) + '...' : 'Not set'} &bull;{' '}
-                      <strong>Drop:</strong> {destination ? destination.address.slice(0, 24) + '...' : 'Not set'}
-                    </span>
+                    <div className="flex items-center gap-2 truncate text-xs">
+                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white font-black text-[9px] flex items-center justify-center shrink-0">A</span>
+                      <span className="truncate max-w-[130px] font-semibold text-slate-800">
+                        {pickup ? pickup.address : 'Pickup A not set'}
+                      </span>
+                      <span className="text-slate-400 font-bold">&rarr;</span>
+                      <span className="w-4 h-4 rounded-full bg-rose-600 text-white font-black text-[9px] flex items-center justify-center shrink-0">B</span>
+                      <span className="truncate max-w-[130px] font-semibold text-slate-800">
+                        {destination ? destination.address : 'Drop B not set'}
+                      </span>
+                    </div>
                     <span className="text-indigo-600 font-extrabold flex items-center gap-1 shrink-0 ml-2">
                       <span>Open Form</span>
                       <ChevronUp className="w-3.5 h-3.5" />
