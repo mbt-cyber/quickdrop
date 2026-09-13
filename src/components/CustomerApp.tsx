@@ -1162,13 +1162,6 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-900"
                           />
                         </div>
-                        <input
-                          type="text"
-                          value={recipientNotes}
-                          onChange={(e) => setRecipientNotes(e.target.value)}
-                          placeholder="Dropoff note (e.g. call on arrival, leave at desk)"
-                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 text-[11px]"
-                        />
                       </div>
 
                       {/* Sender Details (Point A) */}
@@ -1197,13 +1190,6 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium text-slate-900"
                           />
                         </div>
-                        <input
-                          type="text"
-                          value={senderNotes}
-                          onChange={(e) => setSenderNotes(e.target.value)}
-                          placeholder="Pickup note (e.g. ring doorbell twice, gate #2)"
-                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-700 text-[11px]"
-                        />
                       </div>
                     </div>
 
