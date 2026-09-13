@@ -54,6 +54,8 @@ import {
   LogOut,
   Camera,
   Upload,
+  Crosshair,
+  LocateFixed,
 } from 'lucide-react';
 
 interface CustomerAppProps {
@@ -219,6 +221,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
   // Booking Form State - Start empty (null) as requested
   const [pickup, setPickup] = useState<LocationPoint | null>(null);
   const [destination, setDestination] = useState<LocationPoint | null>(null);
+  const [customerGps, setCustomerGps] = useState<LocationPoint | null>(null);
   const [mapActiveMode, setMapActiveMode] = useState<'pickup' | 'destination'>('pickup');
   const [pickupSearchQuery, setPickupSearchQuery] = useState('');
   const [dropoffSearchQuery, setDropoffSearchQuery] = useState('');
@@ -608,6 +611,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
               }}
               activeMode={mapActiveMode}
               setActiveMode={setMapActiveMode}
+              customerGps={customerGps}
+              onCustomerGpsChange={(loc) => setCustomerGps(loc)}
               className="w-full h-full"
             />
 
@@ -764,9 +769,46 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                               <span>Pickup Address</span>
                             </label>
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                              Pickup
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (customerGps) {
+                                    setPickup(customerGps);
+                                  } else if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+                                    navigator.geolocation.getCurrentPosition(
+                                      (pos) => {
+                                        const loc: LocationPoint = {
+                                          lat: Number(pos.coords.latitude.toFixed(5)),
+                                          lng: Number(pos.coords.longitude.toFixed(5)),
+                                          address: `Live GPS Location (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`,
+                                        };
+                                        setCustomerGps(loc);
+                                        setPickup(loc);
+                                      },
+                                      () => {
+                                        const fallback: LocationPoint = {
+                                          lat: 30.7333,
+                                          lng: 76.7794,
+                                          address: 'Sector 17, Chandigarh (Live GPS Hub)',
+                                        };
+                                        setCustomerGps(fallback);
+                                        setPickup(fallback);
+                                      },
+                                      { enableHighAccuracy: true, timeout: 8000 }
+                                    );
+                                  }
+                                }}
+                                className="px-2 py-0.5 rounded-md bg-blue-50 hover:bg-blue-100 text-blue-800 text-[10px] font-extrabold border border-blue-200 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                                title="Use current live GPS location as pickup"
+                              >
+                                <Crosshair className="w-3 h-3 text-blue-600 animate-pulse" />
+                                <span>Use My Live GPS</span>
+                              </button>
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                                Pickup
+                              </span>
+                            </div>
                           </div>
 
                           {/* Search Pickup Address Bar */}

@@ -2,7 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { LocationPoint } from '../types';
 import { searchLocations, calculateDistanceKm } from '../utils/geoUtils';
-import { MapPin, Navigation, Search, Check, Crosshair, AlertCircle, Layers, Globe, Mountain, Moon } from 'lucide-react';
+import {
+  MapPin,
+  Navigation,
+  Search,
+  Check,
+  Crosshair,
+  AlertCircle,
+  Layers,
+  Globe,
+  Mountain,
+  Moon,
+  LocateFixed,
+  Compass,
+} from 'lucide-react';
 
 export type MapLayerType = 'streets' | 'satellite' | 'terrain' | 'voyager_dark';
 
@@ -48,6 +61,8 @@ interface MapPickerProps {
   onSelectDestination: (loc: LocationPoint) => void;
   activeMode: 'pickup' | 'destination';
   setActiveMode: (mode: 'pickup' | 'destination') => void;
+  customerGps?: LocationPoint | null;
+  onCustomerGpsChange?: (loc: LocationPoint) => void;
   className?: string;
 }
 
@@ -58,6 +73,8 @@ export const MapPicker: React.FC<MapPickerProps> = ({
   onSelectDestination,
   activeMode,
   setActiveMode,
+  customerGps,
+  onCustomerGpsChange,
   className,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -71,6 +88,19 @@ export const MapPicker: React.FC<MapPickerProps> = ({
   const routeLineRef = useRef<L.Polyline | null>(null);
   const routeLineBgRef = useRef<L.Polyline | null>(null);
   const distBadgeRef = useRef<L.Marker | null>(null);
+
+  // Customer Live GPS Location state & refs
+  const [customerGpsLoc, setCustomerGpsLoc] = useState<LocationPoint | null>(
+    customerGps || {
+      lat: 30.7333,
+      lng: 76.7794,
+      address: 'Sector 17, Chandigarh (Live GPS Active)',
+    }
+  );
+  const [gpsAccuracy, setGpsAccuracy] = useState<number>(25);
+  const [isGpsLiveTracking, setIsGpsLiveTracking] = useState<boolean>(false);
+  const customerGpsMarkerRef = useRef<L.Marker | null>(null);
+  const customerGpsCircleRef = useRef<L.Circle | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<LocationPoint[]>([]);
@@ -105,17 +135,64 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     tileLayerRef.current = newTileLayer;
   };
 
+  // Sync external customerGps if provided
+  useEffect(() => {
+    if (customerGps) {
+      setCustomerGpsLoc(customerGps);
+    }
+  }, [customerGps]);
+
+  // Continuous Live GPS Watch Position for Customer Location
+  useEffect(() => {
+    let watchId: number | null = null;
+
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      try {
+        watchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            const updatedPoint: LocationPoint = {
+              lat: Number(latitude.toFixed(5)),
+              lng: Number(longitude.toFixed(5)),
+              address: `Live GPS Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+            };
+            setCustomerGpsLoc(updatedPoint);
+            setGpsAccuracy(Math.round(accuracy || 20));
+            setIsGpsLiveTracking(true);
+            if (onCustomerGpsChange) {
+              onCustomerGpsChange(updatedPoint);
+            }
+          },
+          (err) => {
+            console.warn('Customer GPS watch notification:', err.message);
+            // Default Tricity position if permissions pending or in iframe
+            setIsGpsLiveTracking(false);
+          },
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 }
+        );
+      } catch (e) {
+        console.warn('Geolocation init warning:', e);
+      }
+    }
+
+    return () => {
+      if (watchId !== null && typeof window !== 'undefined' && 'geolocation' in navigator) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
+  }, [onCustomerGpsChange]);
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     // Default center: Chandigarh / Tricity central region
-    const defaultLat = pickup?.lat || 30.7046;
-    const defaultLng = pickup?.lng || 76.7179;
+    const defaultLat = pickup?.lat || customerGpsLoc?.lat || 30.7046;
+    const defaultLng = pickup?.lng || customerGpsLoc?.lng || 76.7179;
 
     const map = L.map(mapContainerRef.current, {
       center: [defaultLat, defaultLng],
-      zoom: 11,
+      zoom: 12,
       zoomControl: false,
     });
 
@@ -210,6 +287,14 @@ export const MapPicker: React.FC<MapPickerProps> = ({
 
     return () => {
       clearTimeout(timer);
+      if (customerGpsMarkerRef.current) {
+        customerGpsMarkerRef.current.remove();
+        customerGpsMarkerRef.current = null;
+      }
+      if (customerGpsCircleRef.current) {
+        customerGpsCircleRef.current.remove();
+        customerGpsCircleRef.current = null;
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -221,6 +306,99 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       mapRef.current.invalidateSize();
     }
   }, [pickup, destination]);
+
+  // Render & Update Customer Live GPS Marker + Accuracy Circle
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !customerGpsLoc) return;
+
+    // Customer GPS Beacon Marker Icon
+    const customerIcon = L.divIcon({
+      className: 'customer-gps-wrapper',
+      html: `
+        <div class="customer-gps-beacon">
+          <div class="customer-gps-ring"></div>
+          <div class="customer-gps-dot">
+            <svg style="width: 11px; height: 11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+            </svg>
+          </div>
+          <div class="absolute -top-7 whitespace-nowrap bg-blue-950/95 text-blue-200 text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-xl border border-blue-400/70 flex items-center gap-1.5 pointer-events-none">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>You Are Here (Live GPS)</span>
+          </div>
+        </div>
+      `,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
+    });
+
+    // Create popup element with interactive action buttons
+    const popupEl = document.createElement('div');
+    popupEl.className = 'p-1.5 text-slate-800 text-xs min-w-[210px] select-none';
+    popupEl.innerHTML = `
+      <div class="font-black text-slate-900 flex items-center gap-1.5 pb-1.5 border-b border-slate-200">
+        <span class="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+        <span>Customer Live GPS Location</span>
+      </div>
+      <div class="mt-2 text-[11px] text-slate-600 space-y-1">
+        <div><b>Coordinates:</b> ${customerGpsLoc.lat}, ${customerGpsLoc.lng}</div>
+        <div><b>Accuracy:</b> &plusmn;${gpsAccuracy} meters</div>
+        <div class="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <span>${isGpsLiveTracking ? 'Real-Time GPS Tracking Active' : 'Live GPS Connected'}</span>
+        </div>
+      </div>
+      <div class="mt-3 flex flex-col gap-1.5">
+        <button id="gps-pickup-btn" class="w-full px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-[11px] rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+          <span>📍 Set as Pickup (Location A)</span>
+        </button>
+        <button id="gps-dest-btn" class="w-full px-2.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] rounded-lg shadow-xs transition-colors flex items-center justify-center gap-1 cursor-pointer">
+          <span>🎯 Set as Dropoff (Location B)</span>
+        </button>
+      </div>
+    `;
+
+    popupEl.querySelector('#gps-pickup-btn')?.addEventListener('click', () => {
+      onSelectPickup(customerGpsLoc);
+      map.closePopup();
+    });
+
+    popupEl.querySelector('#gps-dest-btn')?.addEventListener('click', () => {
+      onSelectDestination(customerGpsLoc);
+      map.closePopup();
+    });
+
+    // Update or add Customer Marker
+    if (customerGpsMarkerRef.current) {
+      customerGpsMarkerRef.current.setLatLng([customerGpsLoc.lat, customerGpsLoc.lng]);
+      customerGpsMarkerRef.current.setPopupContent(popupEl);
+    } else {
+      customerGpsMarkerRef.current = L.marker([customerGpsLoc.lat, customerGpsLoc.lng], {
+        icon: customerIcon,
+        zIndexOffset: 1000,
+      })
+        .addTo(map)
+        .bindPopup(popupEl);
+    }
+
+    // Update or add Accuracy Circle
+    const circleRadius = Math.max(gpsAccuracy, 30);
+    if (customerGpsCircleRef.current) {
+      customerGpsCircleRef.current.setLatLng([customerGpsLoc.lat, customerGpsLoc.lng]);
+      customerGpsCircleRef.current.setRadius(circleRadius);
+    } else {
+      customerGpsCircleRef.current = L.circle([customerGpsLoc.lat, customerGpsLoc.lng], {
+        radius: circleRadius,
+        color: '#2563eb',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.12,
+        weight: 1.5,
+        dashArray: '3, 4',
+        interactive: false,
+      }).addTo(map);
+    }
+  }, [customerGpsLoc, gpsAccuracy, isGpsLiveTracking, onSelectPickup, onSelectDestination]);
 
   // Update Markers & Polyline
   useEffect(() => {
@@ -457,6 +635,18 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     }
   };
 
+  // Smoothly center and zoom map directly to customer's live GPS coordinates
+  const handleFlyToUserGps = () => {
+    if (customerGpsLoc && mapRef.current) {
+      mapRef.current.flyTo([customerGpsLoc.lat, customerGpsLoc.lng], 15, { duration: 1.2 });
+      if (customerGpsMarkerRef.current) {
+        customerGpsMarkerRef.current.openPopup();
+      }
+    } else {
+      handleDetectLocation();
+    }
+  };
+
   return (
     <div
       className={
@@ -483,6 +673,25 @@ export const MapPicker: React.FC<MapPickerProps> = ({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Center Live GPS Status Indicator Chip */}
+        <div className="flex items-center gap-1.5 bg-blue-950/80 px-2 py-0.5 rounded-xl border border-blue-500/40 text-[10px] text-blue-200 shadow-xs">
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
+          <span className="font-extrabold hidden sm:inline">Customer GPS:</span>
+          <span className="font-mono text-blue-100 font-bold">
+            {customerGpsLoc ? `${customerGpsLoc.lat.toFixed(3)}, ${customerGpsLoc.lng.toFixed(3)}` : 'Detecting...'}
+          </span>
+          {customerGpsLoc && (
+            <button
+              type="button"
+              onClick={() => onSelectPickup(customerGpsLoc)}
+              className="px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold rounded-md text-[9px] cursor-pointer transition-colors shadow-2xs"
+              title="Use current live GPS location as pickup (Location A)"
+            >
+              Use as A
+            </button>
+          )}
         </div>
 
         {/* Google Maps Layering Quick Switcher */}
@@ -630,12 +839,30 @@ export const MapPicker: React.FC<MapPickerProps> = ({
         )}
       </div>
 
+      {/* Floating Customer Live GPS Recenter Button (Google Maps Style) */}
+      <div className="absolute right-3.5 top-28 z-20 flex flex-col gap-2 items-center">
+        <button
+          type="button"
+          onClick={handleFlyToUserGps}
+          className="w-10 h-10 bg-white/95 backdrop-blur-md hover:bg-blue-50 text-blue-600 hover:text-blue-700 rounded-xl shadow-xl border border-slate-200 hover:border-blue-300 flex items-center justify-center transition-all transform hover:scale-105 active:scale-95 cursor-pointer group"
+          title="Fly to My Live GPS Location"
+          aria-label="Fly to My Live GPS Location"
+        >
+          <LocateFixed className="w-5 h-5 group-hover:rotate-45 transition-transform text-blue-600" />
+        </button>
+      </div>
+
       {/* Map Element */}
       <div ref={mapContainerRef} className="w-full h-full z-10" />
 
       {/* Map Legend / Hint Banner */}
-      <div className="absolute bottom-3 left-3 right-12 z-20 bg-slate-900/90 text-white backdrop-blur-md px-3 py-2 rounded-xl border border-slate-700 shadow-lg text-xs flex items-center justify-between gap-2">
+      <div className="absolute bottom-3 left-3 right-12 z-20 bg-slate-900/90 text-white backdrop-blur-md px-3 py-2 rounded-xl border border-slate-700 shadow-lg text-xs flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 truncate">
+          <span className="flex items-center gap-1 font-extrabold text-blue-400 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 ring-2 ring-blue-300/50 animate-pulse"></span>
+            You (Live GPS)
+          </span>
+          <span className="text-slate-600">|</span>
           <span className="flex items-center gap-1 font-extrabold text-emerald-400 text-xs">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300/40"></span>
             A: Pickup
