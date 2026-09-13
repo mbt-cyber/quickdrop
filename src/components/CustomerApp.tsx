@@ -1041,53 +1041,54 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                       </div>
                     </div>
 
-                    {/* SECTION 2: DELIVERY TYPE & SCHEDULE */}
-                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200 space-y-4">
-                      <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                    {/* SECTION 2: DELIVERY TYPE & SCHEDULE - BOX-LESS DESIGN WITH ONLY ICONS */}
+                    <div className="space-y-4 pb-4 border-b border-slate-200/90">
+                      <div className="flex items-center justify-between pb-1">
                         <h3 className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
                           <Package className="w-4 h-4 text-indigo-600" />
-                          <span>2. Select Delivery Type & Schedule</span>
+                          <span>Select Delivery &amp; Schedule</span>
+                          <span className="text-[11px] font-bold text-indigo-600">
+                            &bull; {deliveryTypesList.find((item) => item.id === deliveryType)?.title}
+                          </span>
                         </h3>
-                        <span className="text-[10px] text-slate-500 font-medium">Step 2 of 4</span>
+                        <span className="text-[10px] text-slate-400 font-semibold hidden sm:inline">Step 2 of 4</span>
                       </div>
 
-                      {/* Delivery Type Chips */}
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-2">
-                          Category of Package
-                        </label>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                          {deliveryTypesList.map((item) => {
-                            const IconComp = item.icon;
-                            const isSelected = deliveryType === item.id;
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => setDeliveryType(item.id)}
-                                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center gap-2 ${
-                                  isSelected
-                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300'
+                      {/* Delivery Type Icons Only - Box-less */}
+                      <div className="flex items-center gap-5 sm:gap-7 py-1">
+                        {deliveryTypesList.map((item) => {
+                          const IconComp = item.icon;
+                          const isSelected = deliveryType === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => setDeliveryType(item.id)}
+                              title={`${item.title}: ${item.desc}`}
+                              aria-label={item.title}
+                              className={`relative flex flex-col items-center justify-center transition-all cursor-pointer p-1.5 ${
+                                isSelected
+                                  ? 'text-indigo-600 scale-115'
+                                  : 'text-slate-400 hover:text-slate-700'
+                              }`}
+                            >
+                              <IconComp
+                                className={`w-6 h-6 transition-all ${
+                                  isSelected ? 'stroke-[2.5]' : 'stroke-[1.75]'
                                 }`}
-                              >
-                                <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-indigo-600'}`} />
-                                <div className="min-w-0">
-                                  <div className="text-xs font-bold truncate">{item.title}</div>
-                                  <div className={`text-[9px] truncate ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
-                                    {item.desc}
-                                  </div>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
+                              />
+                              {isSelected && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 mt-1"></span>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
 
                       {/* Schedule Delivery Date & Slot */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                         <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                             Delivery Date
                           </label>
                           <input
@@ -1095,18 +1096,18 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                             value={scheduledDate}
                             onChange={(e) => setScheduledDate(e.target.value)}
                             required
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium text-slate-800 shadow-2xs"
+                            className="w-full py-1.5 px-0 text-xs bg-transparent border-0 border-b border-slate-300 focus:border-indigo-600 focus:outline-none font-medium text-slate-800"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                             Pickup Slot
                           </label>
                           <select
                             value={selectedSlot}
                             onChange={(e) => setSelectedSlot(e.target.value)}
                             required
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-indigo-900 shadow-2xs cursor-pointer"
+                            className="w-full py-1.5 px-0 text-xs bg-transparent border-0 border-b border-slate-300 focus:border-indigo-600 focus:outline-none font-semibold text-indigo-900 cursor-pointer"
                           >
                             <option value="10:00AM To 12:00PM Zirakhpur to Chandigarh dropoff">
                               10:00AM To 12:00PM (Zirakpur to Chd)
