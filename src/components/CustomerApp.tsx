@@ -753,39 +753,8 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                     onSubmit={handleBookOrder}
                     className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5 scrollbar-thin scrollbar-thumb-slate-300 overscroll-contain"
                   >
-                    {/* SECTION 1: PICKUP (A) & DROP (B) ROUTE - BOX-LESS MINIMALIST DESIGN */}
+                    {/* SECTION 1: PICKUP & DROP ROUTE */}
                     <div className="space-y-4 pb-4 border-b border-slate-200/90">
-                      <div className="flex items-center justify-between pb-1">
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center -space-x-1">
-                            <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[11px] flex items-center justify-center shadow-xs">
-                              A
-                            </span>
-                            <span className="w-5 h-5 rounded-full bg-rose-600 text-white font-black text-[11px] flex items-center justify-center shadow-xs">
-                              B
-                            </span>
-                          </div>
-                          <div>
-                            <h3 className="text-xs font-black font-heading text-slate-900 flex items-center gap-1.5">
-                              <span>Pickup (A) &amp; Drop (B)</span>
-                            </h3>
-                            <p className="text-[10px] text-slate-500">
-                              Direct route from Point A to Point B
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {pickup && destination && (
-                            <span className="text-indigo-600 font-black text-[11px] flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-ping"></span>
-                              <span>{distanceKm} km Route</span>
-                            </span>
-                          )}
-                          <span className="text-[10px] text-slate-400 font-semibold hidden sm:inline">Step 1 of 4</span>
-                        </div>
-                      </div>
-
                       {/* Box-less Route Flow with Vertical Stem */}
                       <div className="relative pl-7 space-y-4">
                         {/* Vertical Route Stem connecting A and B */}
