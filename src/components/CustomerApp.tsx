@@ -758,21 +758,40 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                       {/* Box-less Route Flow with Vertical Stem */}
                       <div className="relative pl-7 space-y-4">
                         {/* Vertical Route Stem connecting A and B */}
-                        <div className="absolute left-2.5 top-3.5 bottom-5 w-0.5 bg-gradient-to-b from-emerald-500 via-slate-300 to-rose-500 -translate-x-1/2"></div>
+                        <div className="absolute left-2.5 top-3.5 bottom-3.5 w-0.5 bg-gradient-to-b from-emerald-500 via-slate-300 to-rose-500 -translate-x-1/2"></div>
 
                         {/* POINT A: PICKUP */}
-                        <div className="relative space-y-1.5">
+                        <div className="relative space-y-1">
                           {/* Node A marker along stem */}
-                          <span className="absolute -left-7 top-0.5 w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center ring-4 ring-white shadow-xs">
+                          <span className="absolute -left-7 top-1 w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center ring-4 ring-white shadow-xs">
                             A
                           </span>
 
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-black uppercase tracking-wider text-slate-900">
-                              Point A &bull; Pickup Location
-                            </label>
+                          {/* Seamless Single Input for Point A with inline Actions */}
+                          <div className="relative flex items-center">
+                            <input
+                              type="text"
+                              value={pickupSearchQuery !== '' ? pickupSearchQuery : (pickup?.address || '')}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPickupSearchQuery(val);
+                                const coords = inferCoordinatesFromAddress(
+                                  val,
+                                  pickup?.lat || 30.6425,
+                                  pickup?.lng || 76.8173
+                                );
+                                setPickup({
+                                  address: val,
+                                  lat: coords.lat,
+                                  lng: coords.lng,
+                                });
+                              }}
+                              onFocus={() => setMapActiveMode('pickup')}
+                              placeholder="Enter pickup address, sector, or landmark..."
+                              className="w-full py-1.5 pl-0 pr-24 text-xs text-slate-900 placeholder-slate-400 bg-transparent border-0 border-b border-slate-300 focus:border-emerald-600 focus:outline-none transition-colors font-medium"
+                            />
 
-                            <div className="flex items-center gap-2">
+                            <div className="absolute right-0 flex items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -809,7 +828,7 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                 title="Use current live GPS location as pickup point A"
                               >
                                 <Crosshair className="w-3 h-3 text-blue-600 animate-pulse" />
-                                <span>Use Live GPS</span>
+                                <span>Live GPS</span>
                               </button>
 
                               {pickup && (
@@ -826,31 +845,6 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                                 </button>
                               )}
                             </div>
-                          </div>
-
-                          {/* Seamless Single Input for Point A */}
-                          <div className="relative">
-                            <input
-                              type="text"
-                              value={pickupSearchQuery !== '' ? pickupSearchQuery : (pickup?.address || '')}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPickupSearchQuery(val);
-                                const coords = inferCoordinatesFromAddress(
-                                  val,
-                                  pickup?.lat || 30.6425,
-                                  pickup?.lng || 76.8173
-                                );
-                                setPickup({
-                                  address: val,
-                                  lat: coords.lat,
-                                  lng: coords.lng,
-                                });
-                              }}
-                              onFocus={() => setMapActiveMode('pickup')}
-                              placeholder="Enter pickup address, sector, or landmark..."
-                              className="w-full py-1.5 px-0 text-xs text-slate-900 placeholder-slate-400 bg-transparent border-0 border-b border-slate-300 focus:border-emerald-600 focus:outline-none transition-colors font-medium"
-                            />
 
                             {/* Autocomplete Suggestions Dropdown */}
                             {pickupSearchQuery.trim().length > 0 && (
@@ -941,34 +935,14 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                         </div>
 
                         {/* POINT B: DROPOFF */}
-                        <div className="relative space-y-1.5">
+                        <div className="relative space-y-1">
                           {/* Node B marker along stem */}
-                          <span className="absolute -left-7 top-0.5 w-5 h-5 rounded-full bg-rose-600 text-white font-black text-[10px] flex items-center justify-center ring-4 ring-white shadow-xs">
+                          <span className="absolute -left-7 top-1 w-5 h-5 rounded-full bg-rose-600 text-white font-black text-[10px] flex items-center justify-center ring-4 ring-white shadow-xs">
                             B
                           </span>
 
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs font-black uppercase tracking-wider text-slate-900">
-                              Point B &bull; Drop Location
-                            </label>
-
-                            {destination && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setDestination(null);
-                                  setDropoffSearchQuery('');
-                                }}
-                                className="text-[10px] font-bold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                title="Clear Drop Point B"
-                              >
-                                Clear
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Seamless Single Input for Point B */}
-                          <div className="relative">
+                          {/* Seamless Single Input for Point B with inline Clear action */}
+                          <div className="relative flex items-center">
                             <input
                               type="text"
                               value={dropoffSearchQuery !== '' ? dropoffSearchQuery : (destination?.address || '')}
@@ -988,8 +962,24 @@ export const CustomerApp: React.FC<CustomerAppProps> = ({
                               }}
                               onFocus={() => setMapActiveMode('destination')}
                               placeholder="Enter drop address, sector, or landmark..."
-                              className="w-full py-1.5 px-0 text-xs text-slate-900 placeholder-slate-400 bg-transparent border-0 border-b border-slate-300 focus:border-rose-600 focus:outline-none transition-colors font-medium"
+                              className="w-full py-1.5 pl-0 pr-12 text-xs text-slate-900 placeholder-slate-400 bg-transparent border-0 border-b border-slate-300 focus:border-rose-600 focus:outline-none transition-colors font-medium"
                             />
+
+                            {destination && (
+                              <div className="absolute right-0 flex items-center">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDestination(null);
+                                    setDropoffSearchQuery('');
+                                  }}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                  title="Clear Drop Point B"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            )}
 
                             {/* Autocomplete Suggestions Dropdown */}
                             {dropoffSearchQuery.trim().length > 0 && (
