@@ -2,7 +2,44 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import { LocationPoint } from '../types';
 import { searchLocations, calculateDistanceKm } from '../utils/geoUtils';
-import { MapPin, Navigation, Search, Check, Crosshair, AlertCircle } from 'lucide-react';
+import { MapPin, Navigation, Search, Check, Crosshair, AlertCircle, Layers, Globe, Mountain, Moon } from 'lucide-react';
+
+export type MapLayerType = 'streets' | 'satellite' | 'terrain' | 'voyager_dark';
+
+export const MAP_LAYERS: Record<
+  MapLayerType,
+  { name: string; url: string; subdomains?: string; maxZoom: number; attribution: string; icon: string }
+> = {
+  streets: {
+    name: 'Google Streets',
+    url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+    maxZoom: 20,
+    attribution: '&copy; Google Maps',
+    icon: 'streets',
+  },
+  satellite: {
+    name: 'Google Satellite',
+    url: 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    maxZoom: 20,
+    attribution: '&copy; Google Maps Imagery',
+    icon: 'satellite',
+  },
+  terrain: {
+    name: 'Google Terrain',
+    url: 'https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}',
+    maxZoom: 20,
+    attribution: '&copy; Google Maps Terrain',
+    icon: 'terrain',
+  },
+  voyager_dark: {
+    name: 'Voyager Dark',
+    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    subdomains: 'abcd',
+    maxZoom: 19,
+    attribution: '&copy; CARTO &copy; OpenStreetMap',
+    icon: 'dark',
+  },
+};
 
 interface MapPickerProps {
   pickup: LocationPoint | null;
@@ -25,6 +62,10 @@ export const MapPicker: React.FC<MapPickerProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const [currentLayer, setCurrentLayer] = useState<MapLayerType>('streets');
+  const [showLayerMenu, setShowLayerMenu] = useState(false);
+
   const pickupMarkerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
@@ -47,6 +88,23 @@ export const MapPicker: React.FC<MapPickerProps> = ({
     { name: 'Kharar', lat: 30.7499, lng: 76.6493, radius: 3500, color: '#7c3aed' },
   ];
 
+  const changeMapLayer = (layerType: MapLayerType) => {
+    setCurrentLayer(layerType);
+    setShowLayerMenu(false);
+    if (!mapRef.current) return;
+    if (tileLayerRef.current) {
+      mapRef.current.removeLayer(tileLayerRef.current);
+    }
+    const config = MAP_LAYERS[layerType];
+    const newTileLayer = L.tileLayer(config.url, {
+      attribution: config.attribution,
+      maxZoom: config.maxZoom,
+      subdomains: config.subdomains || 'abc',
+    }).addTo(mapRef.current);
+    newTileLayer.bringToBack();
+    tileLayerRef.current = newTileLayer;
+  };
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -61,13 +119,18 @@ export const MapPicker: React.FC<MapPickerProps> = ({
       zoomControl: false,
     });
 
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    // Zoom buttons in topright so they stay accessible above bottom sheet
+    L.control.zoom({ position: 'topright' }).addTo(map);
 
-    // OpenStreetMap standard background tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
+    // Default: Crisp Google Maps Tiles (Google Streets / Roadmap)
+    const initialConfig = MAP_LAYERS.streets;
+    const initialTileLayer = L.tileLayer(initialConfig.url, {
+      attribution: initialConfig.attribution,
+      maxZoom: initialConfig.maxZoom,
+      subdomains: initialConfig.subdomains || 'abc',
     }).addTo(map);
+    initialTileLayer.bringToBack();
+    tileLayerRef.current = initialTileLayer;
 
     // Render Service Area Polygons & Circles on Map Background
     SERVICE_AREAS.forEach((area) => {
@@ -401,31 +464,85 @@ export const MapPicker: React.FC<MapPickerProps> = ({
         'relative w-full h-[400px] sm:h-[460px] rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex flex-col'
       }
     >
-      {/* Top Service Area Header Bar */}
-      <div className="bg-slate-900 text-white px-3 py-2 text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 z-20 border-b border-slate-800 shrink-0">
-        <div className="flex items-center gap-1.5 shrink-0">
+      {/* Top Service Area & Google Maps Layer Bar */}
+      <div className="bg-slate-900/95 backdrop-blur-md text-white px-3 py-2 text-[11px] font-bold flex flex-wrap items-center justify-between gap-2 z-20 border-b border-slate-800 shrink-0 shadow-md">
+        <div className="flex items-center gap-2 shrink-0">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-          <span className="text-slate-300">Service Coverage Areas:</span>
+          <span className="text-slate-300 font-extrabold hidden xs:inline">Tricity Live Map:</span>
+          {/* Quick City Zoom Buttons */}
+          <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
+            {SERVICE_AREAS.map((city) => (
+              <button
+                key={city.name}
+                type="button"
+                onClick={() => flyToCity(city.lat, city.lng)}
+                className="px-2 py-0.5 rounded-full bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-[10px] font-bold border border-slate-700 transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer"
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: city.color }}></span>
+                {city.name}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Quick City Zoom Buttons */}
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none py-0.5">
-          {SERVICE_AREAS.map((city) => (
-            <button
-              key={city.name}
-              type="button"
-              onClick={() => flyToCity(city.lat, city.lng)}
-              className="px-2 py-0.5 rounded-full bg-slate-800 hover:bg-indigo-600 text-slate-200 hover:text-white text-[10px] font-bold border border-slate-700 transition-colors whitespace-nowrap flex items-center gap-1 cursor-pointer"
-            >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: city.color }}></span>
-              {city.name}
-            </button>
-          ))}
+        {/* Google Maps Layering Quick Switcher */}
+        <div className="flex items-center gap-1 bg-slate-800/90 p-0.5 rounded-xl border border-slate-700 shrink-0">
+          <div className="flex items-center gap-1 px-1.5 text-[10px] text-slate-300 font-extrabold hidden md:flex">
+            <Layers className="w-3 h-3 text-indigo-400" />
+            <span>Layer:</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => changeMapLayer('streets')}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
+              currentLayer === 'streets'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+            }`}
+            title="Google Streets / Roadmap (Default)"
+          >
+            <Globe className="w-3 h-3" />
+            <span>Streets</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => changeMapLayer('satellite')}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
+              currentLayer === 'satellite'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+            }`}
+            title="Google Satellite / Hybrid"
+          >
+            <span>Satellite</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => changeMapLayer('terrain')}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
+              currentLayer === 'terrain'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+            }`}
+            title="Google Terrain"
+          >
+            <Mountain className="w-3 h-3" />
+            <span className="hidden sm:inline">Terrain</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => changeMapLayer('voyager_dark')}
+            className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer flex items-center gap-1 ${
+              currentLayer === 'voyager_dark'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+            }`}
+            title="Voyager Dark Map"
+          >
+            <Moon className="w-3 h-3" />
+            <span className="hidden sm:inline">Dark</span>
+          </button>
         </div>
-
-        <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-md text-[10px] uppercase font-black shrink-0 hidden sm:inline-block">
-          Tricity Active
-        </span>
       </div>
 
       {/* Top Search Overlay Bar - Positioned relative below top header */}
